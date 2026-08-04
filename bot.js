@@ -20,8 +20,7 @@ function loadDB() {
       users: {}, 
       orders: {}, 
       promocodes: {},
-      referrals: {},
-      news: []
+      referrals: {}
     }, null, 2));
   }
   return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
@@ -44,8 +43,7 @@ function getUser(userId) {
       referralCode: generateReferralCode(),
       referredBy: null,
       referrals: [],
-      discountUsed: false,
-      lastNewsId: 0
+      discountUsed: false
     };
     saveDB(db);
   }
@@ -73,31 +71,6 @@ function setUserSubscription(userId, days) {
   db.users[userId].subscriptionDays = days;
   db.users[userId].remindersSent = [];
   saveDB(db);
-}
-
-function addSubscriptionDays(userId, days) {
-  const db = loadDB();
-  const user = db.users[userId];
-  if (!user) return false;
-  
-  if (!user.paid || !user.subscriptionEnd) {
-    user.discountAvailable = true;
-    user.discountUsed = false;
-    saveDB(db);
-    return { type: 'discount', message: '🎉 Вы получили скидку 10% на следующую покупку!' };
-  }
-  
-  const currentEnd = new Date(user.subscriptionEnd);
-  const newEnd = new Date(currentEnd.getTime() + days * 24 * 60 * 60 * 1000);
-  user.subscriptionEnd = newEnd.toISOString();
-  user.subscriptionDays += days;
-  saveDB(db);
-  
-  return { 
-    type: 'subscription', 
-    message: `🎉 Вы получили +${days} дней к подписке!`,
-    days: days
-  };
 }
 
 function checkSubscription(userId) {
@@ -165,56 +138,6 @@ function updateOrderStatus(userId, status) {
   const db = loadDB();
   if (db.orders[userId]) {
     db.orders[userId].status = status;
-    saveDB(db);
-  }
-}
-
-// ─────────────────────────────────────────────
-//  НОВОСТИ
-// ─────────────────────────────────────────────
-function createNews(title, text, photoFileId = null) {
-  const db = loadDB();
-  const newsItem = {
-    id: Date.now(),
-    title: title,
-    text: text,
-    photoFileId: photoFileId,
-    createdAt: new Date().toISOString(),
-    views: 0
-  };
-  
-  db.news.push(newsItem);
-  saveDB(db);
-  return newsItem;
-}
-
-function getAllNews() {
-  const db = loadDB();
-  return db.news.reverse();
-}
-
-function getLastNews() {
-  const db = loadDB();
-  if (db.news.length === 0) return null;
-  return db.news[db.news.length - 1];
-}
-
-function getNewsById(id) {
-  const db = loadDB();
-  return db.news.find(n => n.id === id);
-}
-
-function deleteNews(id) {
-  const db = loadDB();
-  db.news = db.news.filter(n => n.id !== id);
-  saveDB(db);
-}
-
-function incrementNewsViews(id) {
-  const db = loadDB();
-  const news = db.news.find(n => n.id === id);
-  if (news) {
-    news.views = (news.views || 0) + 1;
     saveDB(db);
   }
 }
@@ -530,7 +453,6 @@ function mainMenuKeyboard() {
     inline_keyboard: [
       [{ text: '🛍 Каталог', callback_data: 'catalog' }],
       [{ text: '📩 Подать заявку', callback_data: 'submit_order' }],
-      [{ text: '📰 Новости', callback_data: 'news' }],
       [{ text: '🎫 Промокод', callback_data: 'promocode' }],
       [{ text: '👥 Пригласить друга', callback_data: 'referral' }],
       [{ text: '👤 Профиль', callback_data: 'profile' }],
@@ -544,8 +466,6 @@ function adminKeyboard() {
     inline_keyboard: [
       [{ text: '📋 Список заявок', callback_data: 'admin_orders' }],
       [{ text: '📤 Загрузить лоадер', callback_data: 'admin_upload_loader' }],
-      [{ text: '📰 Создать новость', callback_data: 'admin_create_news' }],
-      [{ text: '📰 Управление новостями', callback_data: 'admin_manage_news' }],
       [{ text: '🎫 Создать промокод', callback_data: 'admin_create_promocode' }],
       [{ text: '📊 Список промокодов', callback_data: 'admin_list_promocodes' }],
       [{ text: '🏆 Топ рефералов', callback_data: 'admin_top_referrals' }],
@@ -573,7 +493,6 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
   if (!db.users[userId].remindersSent) db.users[userId].remindersSent = [];
   if (!db.users[userId].referralCode) db.users[userId].referralCode = generateReferralCode();
   if (!db.users[userId].referrals) db.users[userId].referrals = [];
-  if (!db.users[userId].lastNewsId) db.users[userId].lastNewsId = 0;
   saveDB(db);
 
   if (refCode && !db.users[userId].referredBy) {
@@ -587,46 +506,9 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
     }
   }
 
-  const lastNews = getLastNews();
-  let welcomeMessage = `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`;
-  
-  if (lastNews && lastNews.id !== db.users[userId].lastNewsId) {
-    db.users[userId].lastNewsId = lastNews.id;
-    saveDB(db);
-    
-    const newsText = 
-      `📰 *НОВОСТЬ!*\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━\n` +
-      `*${lastNews.title}*\n\n` +
-      `${lastNews.text}\n\n` +
-      `📅 ${new Date(lastNews.createdAt).toLocaleDateString('ru-RU')}\n` +
-      `━━━━━━━━━━━━━━━━━━━━━`;
-    
-    if (lastNews.photoFileId) {
-      bot.sendPhoto(userId, lastNews.photoFileId, {
-        caption: newsText,
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📰 Все новости', callback_data: 'news' }]
-          ]
-        }
-      });
-    } else {
-      bot.sendMessage(userId, newsText, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '📰 Все новости', callback_data: 'news' }]
-          ]
-        }
-      });
-    }
-  }
-
   bot.sendMessage(
     msg.chat.id,
-    welcomeMessage,
+    `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
     { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
   );
 });
@@ -635,44 +517,6 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
 bot.on('text', async (msg) => {
   const userId = msg.from.id;
   const text = msg.text;
-  
-  // Создание новости - заголовок
-  if (userStates[userId] === 'news_title') {
-    userStates[userId] = 'news_text';
-    userStates[`${userId}_news_title`] = text;
-    
-    bot.sendMessage(
-      msg.chat.id,
-      '📝 *Введите текст новости:*\n\n' +
-      'Можно использовать Markdown для форматирования.',
-      { parse_mode: 'Markdown' }
-    );
-    return;
-  }
-  
-  // Создание новости - текст
-  if (userStates[userId] === 'news_text') {
-    const title = userStates[`${userId}_news_title`];
-    const newsText = text;
-    
-    userStates[userId] = 'news_photo';
-    userStates[`${userId}_news_text`] = newsText;
-    
-    bot.sendMessage(
-      msg.chat.id,
-      '🖼 *Отправьте картинку для новости*\n\n' +
-      'Отправьте фото или нажмите "Пропустить" если картинка не нужна.',
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '⏭️ Пропустить', callback_data: 'news_skip_photo' }]
-          ]
-        }
-      }
-    );
-    return;
-  }
   
   // Проверяем, ждет ли пользователь ввод реферального кода
   if (userStates[userId] === 'waiting_referral_code') {
@@ -730,30 +574,10 @@ bot.on('text', async (msg) => {
 // Прием фото
 bot.on('photo', async (msg) => {
   const userId = msg.from.id;
-  const photoFileId = msg.photo[msg.photo.length - 1].file_id;
-
-  if (userStates[userId] === 'news_photo') {
-    const title = userStates[`${userId}_news_title`];
-    const newsText = userStates[`${userId}_news_text`];
-    
-    const news = createNews(title, newsText, photoFileId);
-    
-    userStates[userId] = null;
-    delete userStates[`${userId}_news_title`];
-    delete userStates[`${userId}_news_text`];
-    
-    bot.sendMessage(
-      msg.chat.id,
-      `✅ *Новость создана!*\n\n` +
-      `📌 Заголовок: ${title}\n` +
-      `🖼 С картинкой: ✅\n` +
-      `📅 Дата: ${new Date(news.createdAt).toLocaleString('ru-RU')}`,
-      { parse_mode: 'Markdown', reply_markup: adminKeyboard() }
-    );
-    return;
-  }
 
   if (userStates[userId] !== 'waiting_payment_proof') return;
+
+  const photoFileId = msg.photo[msg.photo.length - 1].file_id;
 
   saveOrder(userId, {
     username: msg.from.username || '',
@@ -986,155 +810,12 @@ bot.on('callback_query', async (query) => {
     );
   }
 
-  // ── Новости ───────────────────────────────
-  else if (data === 'news') {
-    const allNews = getAllNews();
-    
-    if (allNews.length === 0) {
-      bot.editMessageText(
-        '📰 *Новости*\n\nПока нет новостей. Загляните позже! 👀',
-        {
-          chat_id: chatId,
-          message_id: msgId,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main' }]] }
-        }
-      );
-      return;
-    }
-    
-    const news = allNews[0];
-    const total = allNews.length;
-    
-    let newsText = 
-      `📰 *Новости* (${total} шт.)\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━\n` +
-      `*${news.title}*\n\n` +
-      `${news.text}\n\n` +
-      `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n` +
-      `👀 ${news.views || 0} просмотров\n` +
-      `━━━━━━━━━━━━━━━━━━━━━`;
-    
-    const keyboard = [];
-    if (allNews.length > 1) {
-      keyboard.push([{ text: '⏩ Следующая', callback_data: `news_${allNews[1].id}` }]);
-    }
-    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
-    
-    if (news.photoFileId) {
-      bot.editMessageMedia(
-        {
-          type: 'photo',
-          media: news.photoFileId,
-          caption: newsText,
-          parse_mode: 'Markdown'
-        },
-        { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: keyboard } }
-      );
-    } else {
-      bot.editMessageText(
-        newsText,
-        {
-          chat_id: chatId,
-          message_id: msgId,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard }
-        }
-      );
-    }
-    
-    incrementNewsViews(news.id);
-  }
-  
-  // ── Листание новостей ─────────────────────
-  else if (data.startsWith('news_')) {
-    const newsId = parseInt(data.replace('news_', ''));
-    const allNews = getAllNews();
-    const currentIndex = allNews.findIndex(n => n.id === newsId);
-    
-    if (currentIndex === -1) {
-      bot.answerCallbackQuery(query.id, { text: 'Новость не найдена', show_alert: true });
-      return;
-    }
-    
-    const news = allNews[currentIndex];
-    const total = allNews.length;
-    
-    let newsText = 
-      `📰 *Новости* (${currentIndex + 1}/${total})\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━\n` +
-      `*${news.title}*\n\n` +
-      `${news.text}\n\n` +
-      `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n` +
-      `👀 ${news.views || 0} просмотров\n` +
-      `━━━━━━━━━━━━━━━━━━━━━`;
-    
-    const keyboard = [];
-    const row = [];
-    if (currentIndex < total - 1) {
-      row.push({ text: '⏩ Следующая', callback_data: `news_${allNews[currentIndex + 1].id}` });
-    }
-    if (currentIndex > 0) {
-      row.push({ text: '⏪ Предыдущая', callback_data: `news_${allNews[currentIndex - 1].id}` });
-    }
-    if (row.length > 0) {
-      keyboard.push(row);
-    }
-    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
-    
-    if (news.photoFileId) {
-      bot.editMessageMedia(
-        {
-          type: 'photo',
-          media: news.photoFileId,
-          caption: newsText,
-          parse_mode: 'Markdown'
-        },
-        { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: keyboard } }
-      );
-    } else {
-      bot.editMessageText(
-        newsText,
-        {
-          chat_id: chatId,
-          message_id: msgId,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard }
-        }
-      );
-    }
-    
-    incrementNewsViews(news.id);
-  }
-
-  // ── Пропустить фото для новости ───────────
-  else if (data === 'news_skip_photo') {
-    const userId = fromUser.id;
-    const title = userStates[`${userId}_news_title`];
-    const newsText = userStates[`${userId}_news_text`];
-    
-    const news = createNews(title, newsText);
-    
-    userStates[userId] = null;
-    delete userStates[`${userId}_news_title`];
-    delete userStates[`${userId}_news_text`];
-    
-    bot.editMessageText(
-      `✅ *Новость создана!*\n\n` +
-      `📌 Заголовок: ${title}\n` +
-      `🖼 С картинкой: ❌\n` +
-      `📅 Дата: ${new Date(news.createdAt).toLocaleString('ru-RU')}`,
-      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
-    );
-  }
-
   // ── Реферальная система ────────────────────
   else if (data === 'referral') {
     const user = getUser(fromUser.id);
     const refCode = user.referralCode;
     const stats = getReferralStats(fromUser.id);
     
-    // Получаем username бота
     const botInfo = await bot.getMe();
     const botUsername = botInfo.username;
     const link = `https://t.me/${botUsername}?start=${refCode}`;
@@ -1353,7 +1034,6 @@ bot.on('callback_query', async (query) => {
     const db = loadDB();
     const totalUsers = Object.keys(db.users).length;
     const activeSubs = Object.values(db.users).filter(u => u.paid && u.subscriptionEnd && new Date(u.subscriptionEnd) > new Date()).length;
-    const newsCount = db.news.length;
     
     bot.editMessageText(
       `🔧 *Админ панель*\n\n` +
@@ -1361,7 +1041,6 @@ bot.on('callback_query', async (query) => {
         `👥 Всего пользователей: *${totalUsers}*\n` +
         `✅ Активных подписок: *${activeSubs}*\n` +
         `📋 Ожидают проверки: *${pending.length}*\n` +
-        `📰 Всего новостей: *${newsCount}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
@@ -1497,68 +1176,6 @@ bot.on('callback_query', async (query) => {
         message_id: msgId,
         parse_mode: 'Markdown',
         reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_panel' }]] },
-      }
-    );
-  }
-
-  // ── Создать новость ───────────────────────
-  else if (data === 'admin_create_news') {
-    if (!isAdmin) return;
-    
-    userStates[fromUser.id] = 'news_title';
-    
-    bot.editMessageText(
-      '📰 *Создание новости*\n\n' +
-      'Введите *заголовок* новости:\n\n' +
-      'Например: "Обновление лоадера v2.0"',
-      {
-        chat_id: chatId,
-        message_id: msgId,
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_panel' }]] }
-      }
-    );
-  }
-
-  // ── Управление новостями ──────────────────
-  else if (data === 'admin_manage_news') {
-    if (!isAdmin) return;
-    
-    const allNews = getAllNews();
-    
-    if (allNews.length === 0) {
-      bot.editMessageText(
-        '📰 *Управление новостями*\n\nНет созданных новостей.',
-        {
-          chat_id: chatId,
-          message_id: msgId,
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
-        }
-      );
-      return;
-    }
-    
-    let text = '📰 *Управление новостями*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
-    
-    allNews.forEach((news, index) => {
-      text += `${index + 1}. *${news.title}*\n`;
-      text += `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n`;
-      text += `👀 ${news.views || 0} просмотров\n`;
-      text += `🗑 /delete_${news.id} - удалить\n\n`;
-    });
-    
-    text += '━━━━━━━━━━━━━━━━━━━━━\n';
-    text += 'Для удаления новости отправьте команду:\n';
-    text += '`/delete_Номер`';
-    
-    bot.editMessageText(
-      text,
-      {
-        chat_id: chatId,
-        message_id: msgId,
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
       }
     );
   }
@@ -1715,140 +1332,6 @@ bot.on('callback_query', async (query) => {
 });
 
 // ─────────────────────────────────────────────
-//  АДМИН КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ЮЗЕРАМИ
-// ─────────────────────────────────────────────
-
-// /adduser @username дней — добавить/обновить подписку
-bot.onText(/\/adduser(?:\s+@?(\S+))(?:\s+(\d+))?/, (msg, match) => {
-  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
-
-  const username = (match[1] || '').toLowerCase().replace('@', '');
-  const days = parseInt(match[2]) || 30;
-
-  if (!username) {
-    return bot.sendMessage(msg.chat.id, '❌ Использование: /adduser @username дней\nПример: /adduser @test 30');
-  }
-
-  const db = loadDB();
-
-  // Ищем юзера по username
-  let userId = null;
-  for (const [id, data] of Object.entries(db.users)) {
-    if ((data.username || '').toLowerCase() === username) {
-      userId = id;
-      break;
-    }
-  }
-
-  // Если не нашли — создаём запись
-  if (!userId) {
-    userId = `manual_${username}`;
-    db.users[userId] = {
-      username: username,
-      firstName: username,
-      paid: false,
-      subscriptionEnd: null,
-      subscriptionDays: 0,
-      hwid: null,
-      remindersSent: [],
-      referralCode: generateReferralCode(),
-      referrals: [],
-      lastNewsId: 0
-    };
-  }
-
-  const now = new Date();
-  const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  db.users[userId].paid = true;
-  db.users[userId].subscriptionEnd = endDate.toISOString();
-  db.users[userId].subscriptionDays = days;
-  db.users[userId].remindersSent = [];
-  saveDB(db);
-
-  bot.sendMessage(
-    msg.chat.id,
-    `✅ @${username} — подписка выдана на *${days} дней*\n📅 До: ${endDate.toLocaleDateString('ru-RU')}`,
-    { parse_mode: 'Markdown' }
-  );
-});
-
-// /resethwid @username — сброс HWID
-bot.onText(/\/resethwid(?:\s+@?(\S+))?/, (msg, match) => {
-  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
-
-  const username = (match[1] || '').toLowerCase().replace('@', '');
-  if (!username) {
-    return bot.sendMessage(msg.chat.id, '❌ Использование: /resethwid @username');
-  }
-
-  const db = loadDB();
-  let userId = null;
-  for (const [id, data] of Object.entries(db.users)) {
-    if ((data.username || '').toLowerCase() === username) {
-      userId = id;
-      break;
-    }
-  }
-
-  if (!userId) {
-    return bot.sendMessage(msg.chat.id, `❌ @${username} не найден`);
-  }
-
-  db.users[userId].hwid = null;
-  saveDB(db);
-  bot.sendMessage(msg.chat.id, `✅ HWID @${username} сброшен`);
-});
-
-// /users — список всех юзеров с подписками
-bot.onText(/\/users/, (msg) => {
-  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
-
-  const db = loadDB();
-  const now = new Date();
-  const lines = [];
-
-  for (const [id, data] of Object.entries(db.users)) {
-    if (!data.username) continue;
-    const active = data.paid && data.subscriptionEnd && new Date(data.subscriptionEnd) > now;
-    const status = active ? '✅' : '❌';
-    const expire = data.subscriptionEnd ? new Date(data.subscriptionEnd).toLocaleDateString('ru-RU') : 'нет';
-    const hwid = data.hwid ? 'привязан' : 'нет';
-    lines.push(`${status} @${data.username} | до ${expire} | HWID: ${hwid}`);
-  }
-
-  if (lines.length === 0) {
-    return bot.sendMessage(msg.chat.id, 'База пустая');
-  }
-
-  bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: 'Markdown' });
-});
-
-// ─────────────────────────────────────────────
-//  ОБРАБОТЧИК КОМАНД ДЛЯ УДАЛЕНИЯ НОВОСТЕЙ
-// ─────────────────────────────────────────────
-bot.onText(/\/delete_(\d+)/, (msg, match) => {
-  const userId = msg.from.id;
-  const isAdmin = (msg.from.username || '') === ADMIN_USERNAME;
-  
-  if (!isAdmin) return;
-  
-  const newsId = parseInt(match[1]);
-  const news = getNewsById(newsId);
-  
-  if (!news) {
-    bot.sendMessage(userId, '❌ Новость не найдена!');
-    return;
-  }
-  
-  deleteNews(newsId);
-  bot.sendMessage(
-    userId,
-    `✅ Новость "${news.title}" удалена!`,
-    { reply_markup: adminKeyboard() }
-  );
-});
-
-// ─────────────────────────────────────────────
 //  ЗАПУСК НАПОМИНАНИЙ
 // ─────────────────────────────────────────────
 
@@ -1863,87 +1346,6 @@ setTimeout(() => {
   console.log('🔄 Первая проверка подписок...');
   checkSubscriptionReminders();
 }, 60000);
-
-// ─────────────────────────────────────────────
-//  HTTP API ДЛЯ ЛОАДЕРА
-// ─────────────────────────────────────────────
-const http = require('http');
-
-const API_SECRET = 'th0rste1nar_secret_2024';
-const API_PORT = 3000;
-
-http.createServer((req, res) => {
-  if (req.method !== 'POST' || req.url !== '/check') {
-    res.writeHead(404);
-    return res.end('Not found');
-  }
-
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', () => {
-    try {
-      const { secret, username, hwid } = JSON.parse(body);
-
-      if (secret !== API_SECRET) {
-        res.writeHead(403);
-        return res.end(JSON.stringify({ status: 'ERROR', message: 'FORBIDDEN' }));
-      }
-
-      const db = loadDB();
-
-      // Ищем юзера по username
-      let userId = null;
-      for (const [id, data] of Object.entries(db.users)) {
-        if ((data.username || '').toLowerCase() === username.toLowerCase()) {
-          userId = id;
-          break;
-        }
-      }
-
-      if (!userId) {
-        res.writeHead(200);
-        return res.end(JSON.stringify({ status: 'ERROR', message: 'NOT_FOUND' }));
-      }
-
-      const user = db.users[userId];
-
-      if (!user.paid || !user.subscriptionEnd) {
-        res.writeHead(200);
-        return res.end(JSON.stringify({ status: 'ERROR', message: 'NO_SUB' }));
-      }
-
-      const now = new Date();
-      const endDate = new Date(user.subscriptionEnd);
-
-      if (now > endDate) {
-        user.paid = false;
-        user.subscriptionEnd = null;
-        saveDB(db);
-        res.writeHead(200);
-        return res.end(JSON.stringify({ status: 'ERROR', message: 'EXPIRED' }));
-      }
-
-      // HWID проверка
-      if (!user.hwid) {
-        db.users[userId].hwid = hwid;
-        saveDB(db);
-      } else if (user.hwid !== hwid) {
-        res.writeHead(200);
-        return res.end(JSON.stringify({ status: 'ERROR', message: 'HWID_MISMATCH' }));
-      }
-
-      const expire = endDate.toISOString().split('T')[0];
-      res.writeHead(200);
-      return res.end(JSON.stringify({ status: 'OK', expire }));
-
-    } catch (e) {
-      res.writeHead(400);
-      return res.end(JSON.stringify({ status: 'ERROR', message: 'BAD_REQUEST' }));
-    }
-  });
-}).listen(API_PORT, () => {
-  console.log(`✅ API сервер запущен на порту ${API_PORT}`);
-});
 
 // ─────────────────────────────────────────────
 //  ЗАПУСК БОТА
