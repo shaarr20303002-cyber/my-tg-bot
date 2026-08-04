@@ -43,7 +43,11 @@ function getUser(userId) {
       referralCode: generateReferralCode(),
       referredBy: null,
       referrals: [],
-      discountUsed: false
+      discountUsed: false,
+      lastSpin: null,
+      discountAvailable: false,
+      winCount: 0,
+      totalSpins: 0
     };
     saveDB(db);
   }
@@ -71,6 +75,40 @@ function setUserSubscription(userId, days) {
   db.users[userId].subscriptionDays = days;
   db.users[userId].remindersSent = [];
   saveDB(db);
+}
+
+function addSubscriptionDays(userId, days) {
+  const db = loadDB();
+  const user = db.users[userId];
+  if (!user) return false;
+  
+  // Проверяем есть ли активная подписка
+  const hasValidSubscription = checkSubscription(userId);
+  
+  if (!hasValidSubscription) {
+    // Если нет подписки - даем скидку 20%
+    user.discountAvailable = true;
+    user.discountUsed = false;
+    saveDB(db);
+    return { 
+      type: 'discount', 
+      message: '🎉 Вы выиграли скидку 20% на следующую покупку!',
+      discount: 20
+    };
+  }
+  
+  // Если есть подписка - добавляем дни
+  const currentEnd = new Date(user.subscriptionEnd);
+  const newEnd = new Date(currentEnd.getTime() + days * 24 * 60 * 60 * 1000);
+  user.subscriptionEnd = newEnd.toISOString();
+  user.subscriptionDays += days;
+  saveDB(db);
+  
+  return { 
+    type: 'subscription', 
+    message: `🎉 Вы получили +${days} дней к подписке!`,
+    days: days
+  };
 }
 
 function checkSubscription(userId) {
@@ -248,7 +286,8 @@ function processReferral(userId, refCode) {
   const referrer = db.users[referrerId];
   let rewardMessage = '';
   
-  if (referrer.paid && referrer.subscriptionEnd) {
+  const hasValidSubscription = checkSubscription(referrerId);
+  if (hasValidSubscription) {
     const currentEnd = new Date(referrer.subscriptionEnd);
     const newEnd = new Date(currentEnd.getTime() + 3 * 24 * 60 * 60 * 1000);
     referrer.subscriptionEnd = newEnd.toISOString();
@@ -313,6 +352,109 @@ function getTopReferrers(limit = 10) {
   
   stats.sort((a, b) => b.count - a.count);
   return stats.slice(0, limit);
+}
+
+// ─────────────────────────────────────────────
+//  КОЛЕСО ФОРТУНЫ
+// ─────────────────────────────────────────────
+
+function getLastSpinTime(userId) {
+  const db = loadDB();
+  const user = db.users[userId];
+  if (!user) return null;
+  return user.lastSpin || null;
+}
+
+function canSpin(userId) {
+  const lastSpin = getLastSpinTime(userId);
+  if (!lastSpin) return true;
+  
+  const now = new Date();
+  const lastDate = new Date(lastSpin);
+  const diff = now.getTime() - lastDate.getTime();
+  const hoursDiff = diff / (1000 * 60 * 60);
+  
+  return hoursDiff >= 24;
+}
+
+function getTimeUntilNextSpin(userId) {
+  const lastSpin = getLastSpinTime(userId);
+  if (!lastSpin) return null;
+  
+  const now = new Date();
+  const lastDate = new Date(lastSpin);
+  const nextSpin = new Date(lastDate.getTime() + 24 * 60 * 60 * 1000);
+  
+  const diffMs = nextSpin.getTime() - now.getTime();
+  if (diffMs <= 0) return null;
+  
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  return { hours, minutes };
+}
+
+function spinWheel(userId) {
+  const db = loadDB();
+  const user = getUser(userId);
+  
+  user.lastSpin = new Date().toISOString();
+  user.totalSpins = (user.totalSpins || 0) + 1;
+  saveDB(db);
+  
+  const rand = Math.random() * 100;
+  let result = {};
+  
+  if (rand < 50) { // 50% - попробуй завтра
+    result = {
+      type: 'lose',
+      emoji: '😅',
+      message: '😅 *Попробуй завтра!*\n\nСегодня не твой день, но завтра обязательно повезет! 🍀',
+      reward: null
+    };
+  } else if (rand < 75) { // 25% - +1 день
+    result = {
+      type: 'win',
+      emoji: '🎁',
+      message: '🎁 *Ты выиграл +1 день!*\n\nПоздравляю! Продолжай крутить колесо удачи! 🚀',
+      reward: 1
+    };
+  } else if (rand < 92) { // 17% - +3 дня
+    result = {
+      type: 'win',
+      emoji: '🎊',
+      message: '🎊 *Ты выиграл +3 дня!*\n\nОтличный результат! Ты сегодня везунчик! 🌟',
+      reward: 3
+    };
+  } else if (rand < 99) { // 7% - +7 дней
+    result = {
+      type: 'win',
+      emoji: '🔥',
+      message: '🔥 *Ты выиграл +7 дней!*\n\nВАУ! Это невероятно! Ты настоящий счастливчик! 💪',
+      reward: 7
+    };
+  } else { // 1% - ДЖЕКПОТ! +100 дней
+    result = {
+      type: 'jackpot',
+      emoji: '👑',
+      message: '👑 *ДЖЕКПОТ! +100 ДНЕЙ!*\n\n🎉 ПОЗДРАВЛЯЮ! ТЫ ВЫИГРАЛ ГЛАВНЫЙ ПРИЗ! 🎉\n\nТы настоящая легенда! 🔥',
+      reward: 100
+    };
+  }
+  
+  // Если выиграл - применяем награду
+  if (result.reward) {
+    const rewardResult = addSubscriptionDays(userId, result.reward);
+    if (rewardResult && rewardResult.type === 'discount') {
+      result.message += `\n\n${rewardResult.message}`;
+      result.discount = 20;
+    } else if (rewardResult && rewardResult.type === 'subscription') {
+      user.winCount = (user.winCount || 0) + 1;
+      saveDB(db);
+    }
+  }
+  
+  return result;
 }
 
 // ─────────────────────────────────────────────
@@ -408,6 +550,7 @@ function checkSubscriptionReminders() {
           reply_markup: {
             inline_keyboard: [
               [{ text: '🛍 Продлить подписку', callback_data: 'catalog' }],
+              [{ text: '🎰 Крутить колесо', callback_data: 'spin_wheel' }],
               [{ text: '👤 Проверить профиль', callback_data: 'profile' }]
             ]
           }
@@ -446,7 +589,7 @@ const catalog = [
 ];
 
 // ─────────────────────────────────────────────
-//  КЛАВИАТУРЫ С КРАСИВЫМИ ЭМОДЗИ
+//  КЛАВИАТУРЫ
 // ─────────────────────────────────────────────
 function mainMenuKeyboard() {
   return {
@@ -454,6 +597,7 @@ function mainMenuKeyboard() {
       [{ text: '🛍️ Каталог', callback_data: 'catalog' }],
       [{ text: '📩 Подать заявку', callback_data: 'submit_order' }],
       [{ text: '🎫 Промокод', callback_data: 'promocode' }],
+      [{ text: '🎰 Колесо фортуны', callback_data: 'spin_wheel' }],
       [{ text: '👥 Пригласить друга', callback_data: 'referral' }],
       [{ text: '👤 Профиль', callback_data: 'profile' }],
       [{ text: '🤝 Реселлеры', callback_data: 'resellers' }],
@@ -493,6 +637,9 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
   if (!db.users[userId].remindersSent) db.users[userId].remindersSent = [];
   if (!db.users[userId].referralCode) db.users[userId].referralCode = generateReferralCode();
   if (!db.users[userId].referrals) db.users[userId].referrals = [];
+  if (!db.users[userId].lastSpin) db.users[userId].lastSpin = null;
+  if (!db.users[userId].totalSpins) db.users[userId].totalSpins = 0;
+  if (!db.users[userId].winCount) db.users[userId].winCount = 0;
   saveDB(db);
 
   if (refCode && !db.users[userId].referredBy) {
@@ -807,6 +954,80 @@ bot.on('callback_query', async (query) => {
     );
   }
 
+  // ── Колесо фортуны ────────────────────────
+  else if (data === 'spin_wheel') {
+    const userId = fromUser.id;
+    
+    if (!canSpin(userId)) {
+      const timeLeft = getTimeUntilNextSpin(userId);
+      if (timeLeft) {
+        bot.answerCallbackQuery(query.id, { 
+          text: `⏳ Подожди ${timeLeft.hours}ч ${timeLeft.minutes}м до следующего кручения!`, 
+          show_alert: true 
+        });
+        return;
+      }
+    }
+    
+    // Анимация кручения
+    const spinMessages = [
+      '🎡 *Колесо крутится...*\n\nПодожди немного...',
+      '🔄 *Колесо набирает обороты!*\n\nЕще немного...',
+      '🌀 *Колесо замедляется...*\n\nПочти остановилось...',
+      '🎉 *Останавливается...*\n\nСейчас узнаем результат!'
+    ];
+    
+    // Отправляем анимацию
+    for (let i = 0; i < spinMessages.length; i++) {
+      await bot.editMessageText(
+        spinMessages[i],
+        { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown' }
+      );
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
+    
+    // Крутим колесо
+    const result = spinWheel(userId);
+    
+    // Формируем финальное сообщение
+    let finalMessage = `${result.emoji} *РЕЗУЛЬТАТ!*\n\n${result.message}\n\n`;
+    
+    // Добавляем статистику
+    const user = getUser(userId);
+    finalMessage += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    finalMessage += `📊 *Статистика*\n`;
+    finalMessage += `🎡 Всего кручений: *${user.totalSpins || 0}*\n`;
+    finalMessage += `🏆 Побед: *${user.winCount || 0}*\n`;
+    
+    if (result.discount) {
+      finalMessage += `\n💳 Скидка *${result.discount}%* сохранена!\n`;
+      finalMessage += `Используй её при следующей покупке!`;
+    }
+    
+    const keyboard = [
+      [{ text: '🎰 Крутить снова', callback_data: 'spin_wheel' }],
+      [{ text: '🏠 Главное меню', callback_data: 'main' }]
+    ];
+    
+    // Если выиграл - добавляем кнопку профиля
+    if (result.reward) {
+      const hasValidSubscription = checkSubscription(userId);
+      if (hasValidSubscription) {
+        keyboard.unshift([{ text: '👤 Проверить профиль', callback_data: 'profile' }]);
+      }
+    }
+    
+    await bot.editMessageText(
+      finalMessage,
+      { 
+        chat_id: chatId, 
+        message_id: msgId, 
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+      }
+    );
+  }
+
   // ── Реферальная система ────────────────────
   else if (data === 'referral') {
     const user = getUser(fromUser.id);
@@ -958,6 +1179,7 @@ bot.on('callback_query', async (query) => {
       keyboard.push([{ text: '⬇️ Скачать лоадер', callback_data: 'download_loader' }]);
     }
 
+    keyboard.push([{ text: '🎰 Колесо фортуны', callback_data: 'spin_wheel' }]);
     keyboard.push([{ text: '👥 Пригласить друга', callback_data: 'referral' }]);
     keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
 
@@ -973,6 +1195,8 @@ bot.on('callback_query', async (query) => {
         `🆔 ID: \`${fromUser.id}\`\n` +
         `💳 Статус: ${statusText}${subscriptionInfo}\n` +
         `👥 Рефералов: *${stats.total}*\n` +
+        `🎡 Кручений колеса: *${user.totalSpins || 0}*\n` +
+        `🏆 Побед: *${user.winCount || 0}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }
     );
