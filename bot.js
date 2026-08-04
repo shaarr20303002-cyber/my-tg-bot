@@ -82,11 +82,9 @@ function addSubscriptionDays(userId, days) {
   const user = db.users[userId];
   if (!user) return false;
   
-  // Проверяем есть ли активная подписка
   const hasValidSubscription = checkSubscription(userId);
   
   if (!hasValidSubscription) {
-    // Если нет подписки - даем скидку 20%
     user.discountAvailable = true;
     user.discountUsed = false;
     saveDB(db);
@@ -97,7 +95,6 @@ function addSubscriptionDays(userId, days) {
     };
   }
   
-  // Если есть подписка - добавляем дни
   const currentEnd = new Date(user.subscriptionEnd);
   const newEnd = new Date(currentEnd.getTime() + days * 24 * 60 * 60 * 1000);
   user.subscriptionEnd = newEnd.toISOString();
@@ -405,35 +402,35 @@ function spinWheel(userId) {
   const rand = Math.random() * 100;
   let result = {};
   
-  if (rand < 50) { // 50% - попробуй завтра
+  if (rand < 50) {
     result = {
       type: 'lose',
       emoji: '😅',
       message: '😅 *Попробуй завтра!*\n\nСегодня не твой день, но завтра обязательно повезет! 🍀',
       reward: null
     };
-  } else if (rand < 75) { // 25% - +1 день
+  } else if (rand < 75) {
     result = {
       type: 'win',
       emoji: '🎁',
       message: '🎁 *Ты выиграл +1 день!*\n\nПоздравляю! Продолжай крутить колесо удачи! 🚀',
       reward: 1
     };
-  } else if (rand < 92) { // 17% - +3 дня
+  } else if (rand < 92) {
     result = {
       type: 'win',
       emoji: '🎊',
       message: '🎊 *Ты выиграл +3 дня!*\n\nОтличный результат! Ты сегодня везунчик! 🌟',
       reward: 3
     };
-  } else if (rand < 99) { // 7% - +7 дней
+  } else if (rand < 99) {
     result = {
       type: 'win',
       emoji: '🔥',
       message: '🔥 *Ты выиграл +7 дней!*\n\nВАУ! Это невероятно! Ты настоящий счастливчик! 💪',
       reward: 7
     };
-  } else { // 1% - ДЖЕКПОТ! +100 дней
+  } else {
     result = {
       type: 'jackpot',
       emoji: '👑',
@@ -442,7 +439,6 @@ function spinWheel(userId) {
     };
   }
   
-  // Если выиграл - применяем награду
   if (result.reward) {
     const rewardResult = addSubscriptionDays(userId, result.reward);
     if (rewardResult && rewardResult.type === 'discount') {
@@ -583,6 +579,7 @@ const catalog = [
       '💎 Качество: Premium\n' +
       '🔄 Обновления: включены\n' +
       '⚡ Поставка: после подтверждения оплаты\n' +
+      '💰 Цена: 100 ⭐️ Telegram Stars\n' +
       '━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '📝 Нажми *Buy* чтобы приобрести.',
   },
@@ -836,7 +833,11 @@ bot.on('callback_query', async (query) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '✅ Buy', callback_data: `buy_${item.id}` }],
+          [{ 
+            text: '⭐️ Купить за Stars', 
+            url: 'https://t.me/BotFather?start=stars' 
+          }],
+          [{ text: '💰 Купить за USD', callback_data: `buy_${item.id}` }],
           [{ text: '⬅️ Назад', callback_data: 'catalog' }],
           [{ text: '🏠 Главное меню', callback_data: 'main' }],
         ],
@@ -878,7 +879,7 @@ bot.on('callback_query', async (query) => {
     userStates[fromUser.id] = 'waiting_payment_proof';
 
     bot.editMessageText(
-      '💳 *Оплата*\n\n' +
+      '💰 *Оплата USD*\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━\n' +
         '1️⃣ Напишите менеджеру для уточнения цены:\n' +
         '👤 @hardwareexploit\n\n' +
@@ -969,7 +970,6 @@ bot.on('callback_query', async (query) => {
       }
     }
     
-    // Анимация кручения
     const spinMessages = [
       '🎡 *Колесо крутится...*\n\nПодожди немного...',
       '🔄 *Колесо набирает обороты!*\n\nЕще немного...',
@@ -977,7 +977,6 @@ bot.on('callback_query', async (query) => {
       '🎉 *Останавливается...*\n\nСейчас узнаем результат!'
     ];
     
-    // Отправляем анимацию
     for (let i = 0; i < spinMessages.length; i++) {
       await bot.editMessageText(
         spinMessages[i],
@@ -986,13 +985,10 @@ bot.on('callback_query', async (query) => {
       await new Promise(resolve => setTimeout(resolve, 800));
     }
     
-    // Крутим колесо
     const result = spinWheel(userId);
     
-    // Формируем финальное сообщение
     let finalMessage = `${result.emoji} *РЕЗУЛЬТАТ!*\n\n${result.message}\n\n`;
     
-    // Добавляем статистику
     const user = getUser(userId);
     finalMessage += `━━━━━━━━━━━━━━━━━━━━━\n`;
     finalMessage += `📊 *Статистика*\n`;
@@ -1009,7 +1005,6 @@ bot.on('callback_query', async (query) => {
       [{ text: '🏠 Главное меню', callback_data: 'main' }]
     ];
     
-    // Если выиграл - добавляем кнопку профиля
     if (result.reward) {
       const hasValidSubscription = checkSubscription(userId);
       if (hasValidSubscription) {
