@@ -16,7 +16,13 @@ const DB_FILE = path.join(__dirname, 'db.json');
 // ─────────────────────────────────────────────
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, orders: {}, promocodes: {} }, null, 2));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ 
+      users: {}, 
+      orders: {}, 
+      promocodes: {},
+      referrals: {},
+      news: []
+    }, null, 2));
   }
   return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
 }
@@ -33,11 +39,26 @@ function getUser(userId) {
       username: '', 
       firstName: '',
       subscriptionEnd: null,
-      subscriptionDays: 0
+      subscriptionDays: 0,
+      remindersSent: [],
+      referralCode: generateReferralCode(),
+      referredBy: null,
+      referrals: [],
+      discountUsed: false,
+      lastNewsId: 0 // Для отслеживания просмотренных новостей
     };
     saveDB(db);
   }
   return db.users[userId];
+}
+
+function generateReferralCode(length = 6) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
 }
 
 function setUserSubscription(userId, days) {
@@ -50,6 +71,7 @@ function setUserSubscription(userId, days) {
   db.users[userId].paid = true;
   db.users[userId].subscriptionEnd = endDate.toISOString();
   db.users[userId].subscriptionDays = days;
+  db.users[userId].remindersSent = [];
   saveDB(db);
 }
 
@@ -65,6 +87,7 @@ function checkSubscription(userId) {
     user.paid = false;
     user.subscriptionEnd = null;
     user.subscriptionDays = 0;
+    user.remindersSent = [];
     saveDB(db);
     return false;
   }
@@ -117,6 +140,56 @@ function updateOrderStatus(userId, status) {
   const db = loadDB();
   if (db.orders[userId]) {
     db.orders[userId].status = status;
+    saveDB(db);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  НОВОСТИ
+// ─────────────────────────────────────────────
+function createNews(title, text, photoFileId = null) {
+  const db = loadDB();
+  const newsItem = {
+    id: Date.now(),
+    title: title,
+    text: text,
+    photoFileId: photoFileId,
+    createdAt: new Date().toISOString(),
+    views: 0
+  };
+  
+  db.news.push(newsItem);
+  saveDB(db);
+  return newsItem;
+}
+
+function getAllNews() {
+  const db = loadDB();
+  return db.news.reverse(); // Новые сначала
+}
+
+function getLastNews() {
+  const db = loadDB();
+  if (db.news.length === 0) return null;
+  return db.news[db.news.length - 1];
+}
+
+function getNewsById(id) {
+  const db = loadDB();
+  return db.news.find(n => n.id === id);
+}
+
+function deleteNews(id) {
+  const db = loadDB();
+  db.news = db.news.filter(n => n.id !== id);
+  saveDB(db);
+}
+
+function incrementNewsViews(id) {
+  const db = loadDB();
+  const news = db.news.find(n => n.id === id);
+  if (news) {
+    news.views = (news.views || 0) + 1;
     saveDB(db);
   }
 }
@@ -192,6 +265,215 @@ function getAllPromocodes() {
 }
 
 // ─────────────────────────────────────────────
+//  РЕФЕРАЛЬНАЯ СИСТЕМА
+// ─────────────────────────────────────────────
+function processReferral(userId, refCode) {
+  const db = loadDB();
+  const user = getUser(userId);
+  
+  if (user.referredBy) {
+    return { success: false, message: '❌ Вы уже использовали реферальный код!' };
+  }
+  
+  let referrerId = null;
+  for (const [id, data] of Object.entries(db.users)) {
+    if (data.referralCode === refCode && parseInt(id) !== userId) {
+      referrerId = parseInt(id);
+      break;
+    }
+  }
+  
+  if (!referrerId) {
+    return { success: false, message: '❌ Неверный реферальный код!' };
+  }
+  
+  user.referredBy = referrerId;
+  db.users[userId] = user;
+  
+  if (!db.users[referrerId].referrals) {
+    db.users[referrerId].referrals = [];
+  }
+  db.users[referrerId].referrals.push(userId);
+  
+  saveDB(db);
+  
+  const referrer = db.users[referrerId];
+  let rewardMessage = '';
+  
+  if (referrer.paid && referrer.subscriptionEnd) {
+    const currentEnd = new Date(referrer.subscriptionEnd);
+    const newEnd = new Date(currentEnd.getTime() + 3 * 24 * 60 * 60 * 1000);
+    referrer.subscriptionEnd = newEnd.toISOString();
+    referrer.subscriptionDays += 3;
+    saveDB(db);
+    rewardMessage = `🎉 Вы получили +3 дня к подписке за приглашенного друга!`;
+  } else {
+    referrer.discountAvailable = true;
+    referrer.discountUsed = false;
+    saveDB(db);
+    rewardMessage = `🎉 Вы получили скидку 10% на следующую покупку за приглашенного друга!`;
+  }
+  
+  bot.sendMessage(
+    referrerId,
+    `👥 *Новый реферал!*\n\n` +
+    `Пользователь @${user.username || user.firstName} использовал ваш реферальный код!\n\n` +
+    rewardMessage,
+    { parse_mode: 'Markdown' }
+  );
+  
+  return { 
+    success: true, 
+    message: '✅ Реферальный код активирован!',
+    reward: rewardMessage
+  };
+}
+
+function getReferralStats(userId) {
+  const db = loadDB();
+  const user = db.users[userId];
+  if (!user) return null;
+  
+  const referrals = user.referrals || [];
+  const total = referrals.length;
+  
+  return {
+    total,
+    code: user.referralCode,
+    referrals: referrals,
+    referredBy: user.referredBy
+  };
+}
+
+function getTopReferrers(limit = 10) {
+  const db = loadDB();
+  const users = db.users;
+  
+  const stats = [];
+  for (const [id, data] of Object.entries(users)) {
+    const referrals = data.referrals || [];
+    if (referrals.length > 0) {
+      stats.push({
+        userId: parseInt(id),
+        username: data.username || 'Без имени',
+        firstName: data.firstName || '',
+        count: referrals.length,
+        referrals: referrals
+      });
+    }
+  }
+  
+  stats.sort((a, b) => b.count - a.count);
+  return stats.slice(0, limit);
+}
+
+// ─────────────────────────────────────────────
+//  НАПОМИНАНИЯ О ПОДПИСКЕ
+// ─────────────────────────────────────────────
+function checkSubscriptionReminders() {
+  const db = loadDB();
+  const now = new Date();
+  
+  Object.keys(db.users).forEach(userId => {
+    const user = db.users[userId];
+    
+    if (!user.paid || !user.subscriptionEnd) return;
+    
+    const endDate = new Date(user.subscriptionEnd);
+    const daysLeft = Math.floor((endDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+    
+    if (daysLeft < 0) return;
+    
+    if (!user.remindersSent) {
+      user.remindersSent = [];
+    }
+    
+    function shouldSendReminder(days) {
+      if (daysLeft <= days && !user.remindersSent.includes(days)) {
+        user.remindersSent.push(days);
+        saveDB(db);
+        return true;
+      }
+      return false;
+    }
+    
+    let reminderMessage = '';
+    
+    if (shouldSendReminder(20)) {
+      reminderMessage = 
+        `📅 *Напоминание о подписке*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Ваша подписка истекает через *20 дней*!\n\n` +
+        `⏳ Осталось: *${daysLeft} дней*\n` +
+        `📅 Дата окончания: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
+        `Не забудьте продлить подписку, чтобы не потерять доступ! 🔥\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Для продления нажмите кнопку ниже 👇`;
+    } 
+    else if (shouldSendReminder(14)) {
+      reminderMessage = 
+        `⚠️ *Подписка скоро закончится!*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Осталось всего *${daysLeft} дней*!\n` +
+        `📅 Дата окончания: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
+        `Продлите подписку сейчас, чтобы продолжать пользоваться! 🚀\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Для продления нажмите кнопку ниже 👇`;
+    }
+    else if (shouldSendReminder(7)) {
+      reminderMessage = 
+        `🚨 *СРОЧНО! Подписка заканчивается!*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `До окончания подписки осталось *${daysLeft} дней*!\n` +
+        `📅 Дата окончания: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
+        `Поторопитесь! Осталось совсем немного времени! ⏰\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Продлить подписку можно прямо сейчас 👇`;
+    }
+    else if (shouldSendReminder(3)) {
+      reminderMessage = 
+        `🔥 *ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ!*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `До окончания подписки осталось всего *${daysLeft} дня*!\n` +
+        `📅 Дата окончания: ${endDate.toLocaleDateString('ru-RU')}\n\n` +
+        `Если не продлить сейчас - доступ будет потерян! 😱\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `СРОЧНО продлите подписку! 👇`;
+    }
+    else if (shouldSendReminder(1)) {
+      reminderMessage = 
+        `💀 *ПОСЛЕДНИЙ ДЕНЬ!*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Сегодня последний день подписки! Осталось *${daysLeft} день*!\n` +
+        `📅 Завтра доступ будет закрыт!\n\n` +
+        `Успейте продлить подписку прямо сейчас! ⚡\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `ПРОДЛИТЬ ПОДПИСКУ! 👇`;
+    }
+    
+    if (reminderMessage) {
+      bot.sendMessage(
+        userId,
+        reminderMessage,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🛍 Продлить подписку', callback_data: 'catalog' }],
+              [{ text: '👤 Проверить профиль', callback_data: 'profile' }]
+            ]
+          }
+        }
+      ).catch(err => {
+        console.log(`Не удалось отправить напоминание ${userId}:`, err.message);
+      });
+      
+      console.log(`📨 Напоминание отправлено ${userId}, осталось ${daysLeft} дней`);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
 //  СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЕЙ
 // ─────────────────────────────────────────────
 const userStates = {};
@@ -223,7 +505,9 @@ function mainMenuKeyboard() {
     inline_keyboard: [
       [{ text: '🛍 Каталог', callback_data: 'catalog' }],
       [{ text: '📩 Подать заявку', callback_data: 'submit_order' }],
+      [{ text: '📰 Новости', callback_data: 'news' }],
       [{ text: '🎫 Промокод', callback_data: 'promocode' }],
+      [{ text: '👥 Пригласить друга', callback_data: 'referral' }],
       [{ text: '👤 Профиль', callback_data: 'profile' }],
       [{ text: '🤝 Реселлеры', callback_data: 'resellers' }],
     ],
@@ -235,8 +519,12 @@ function adminKeyboard() {
     inline_keyboard: [
       [{ text: '📋 Список заявок', callback_data: 'admin_orders' }],
       [{ text: '📤 Загрузить лоадер', callback_data: 'admin_upload_loader' }],
+      [{ text: '📰 Создать новость', callback_data: 'admin_create_news' }],
+      [{ text: '📰 Управление новостями', callback_data: 'admin_manage_news' }],
       [{ text: '🎫 Создать промокод', callback_data: 'admin_create_promocode' }],
       [{ text: '📊 Список промокодов', callback_data: 'admin_list_promocodes' }],
+      [{ text: '🏆 Топ рефералов', callback_data: 'admin_top_referrals' }],
+      [{ text: '⏰ Проверить напоминания', callback_data: 'admin_check_reminders' }],
       [{ text: '🏠 Главное меню', callback_data: 'main' }],
     ],
   };
@@ -247,27 +535,135 @@ function adminKeyboard() {
 // ─────────────────────────────────────────────
 
 // /start
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start(?: (.+))?/, (msg, match) => {
   const name = msg.from.first_name || 'пользователь';
+  const userId = msg.from.id;
+  const refCode = match[1];
 
   const db = loadDB();
-  if (!db.users[msg.from.id]) db.users[msg.from.id] = {};
-  db.users[msg.from.id].username = msg.from.username || '';
-  db.users[msg.from.id].firstName = msg.from.first_name || '';
-  if (db.users[msg.from.id].paid === undefined) db.users[msg.from.id].paid = false;
+  if (!db.users[userId]) db.users[userId] = {};
+  db.users[userId].username = msg.from.username || '';
+  db.users[userId].firstName = msg.from.first_name || '';
+  if (db.users[userId].paid === undefined) db.users[userId].paid = false;
+  if (!db.users[userId].remindersSent) db.users[userId].remindersSent = [];
+  if (!db.users[userId].referralCode) db.users[userId].referralCode = generateReferralCode();
+  if (!db.users[userId].referrals) db.users[userId].referrals = [];
+  if (!db.users[userId].lastNewsId) db.users[userId].lastNewsId = 0;
   saveDB(db);
+
+  if (refCode && !db.users[userId].referredBy) {
+    const result = processReferral(userId, refCode);
+    if (result.success) {
+      bot.sendMessage(
+        userId,
+        result.message,
+        { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  // Показываем последнюю новость при входе
+  const lastNews = getLastNews();
+  let welcomeMessage = `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`;
+  
+  if (lastNews && lastNews.id !== db.users[userId].lastNewsId) {
+    // Сохраняем ID просмотренной новости
+    db.users[userId].lastNewsId = lastNews.id;
+    saveDB(db);
+    
+    // Отправляем новость отдельным сообщением
+    const newsText = 
+      `📰 *НОВОСТЬ!*\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `*${lastNews.title}*\n\n` +
+      `${lastNews.text}\n\n` +
+      `📅 ${new Date(lastNews.createdAt).toLocaleDateString('ru-RU')}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━`;
+    
+    if (lastNews.photoFileId) {
+      bot.sendPhoto(userId, lastNews.photoFileId, {
+        caption: newsText,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📰 Все новости', callback_data: 'news' }]
+          ]
+        }
+      });
+    } else {
+      bot.sendMessage(userId, newsText, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📰 Все новости', callback_data: 'news' }]
+          ]
+        }
+      });
+    }
+  }
 
   bot.sendMessage(
     msg.chat.id,
-    `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
+    welcomeMessage,
     { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
   );
 });
 
-// Прием промокода
+// Прием текста (промокоды, новости и т.д.)
 bot.on('text', async (msg) => {
   const userId = msg.from.id;
   const text = msg.text;
+  
+  // Создание новости - заголовок
+  if (userStates[userId] === 'news_title') {
+    userStates[userId] = 'news_text';
+    userStates[`${userId}_news_title`] = text;
+    
+    bot.sendMessage(
+      msg.chat.id,
+      '📝 *Введите текст новости:*\n\n' +
+      'Можно использовать Markdown для форматирования.',
+      { parse_mode: 'Markdown' }
+    );
+    return;
+  }
+  
+  // Создание новости - текст
+  if (userStates[userId] === 'news_text') {
+    const title = userStates[`${userId}_news_title`];
+    const newsText = text;
+    
+    userStates[userId] = 'news_photo';
+    userStates[`${userId}_news_text`] = newsText;
+    
+    bot.sendMessage(
+      msg.chat.id,
+      '🖼 *Отправьте картинку для новости*\n\n' +
+      'Отправьте фото или нажмите "Пропустить" если картинка не нужна.',
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '⏭️ Пропустить', callback_data: 'news_skip_photo' }]
+          ]
+        }
+      }
+    );
+    return;
+  }
+  
+  // Проверяем, ждет ли пользователь ввод реферального кода
+  if (userStates[userId] === 'waiting_referral_code') {
+    const result = processReferral(userId, text.toUpperCase());
+    userStates[userId] = null;
+    
+    bot.sendMessage(
+      msg.chat.id,
+      result.message,
+      { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
+    );
+    return;
+  }
   
   // Проверяем, ждет ли пользователь ввод промокода
   if (userStates[userId] === 'waiting_promocode') {
@@ -309,13 +705,36 @@ bot.on('text', async (msg) => {
   }
 });
 
-// Прием фото (скриншот оплаты)
+// Прием фото (скриншот оплаты ИЛИ картинка для новости)
 bot.on('photo', async (msg) => {
   const userId = msg.from.id;
-
-  if (userStates[userId] !== 'waiting_payment_proof') return;
-
   const photoFileId = msg.photo[msg.photo.length - 1].file_id;
+
+  // Если админ создает новость с картинкой
+  if (userStates[userId] === 'news_photo') {
+    const title = userStates[`${userId}_news_title`];
+    const newsText = userStates[`${userId}_news_text`];
+    
+    // Создаем новость с картинкой
+    const news = createNews(title, newsText, photoFileId);
+    
+    userStates[userId] = null;
+    delete userStates[`${userId}_news_title`];
+    delete userStates[`${userId}_news_text`];
+    
+    bot.sendMessage(
+      msg.chat.id,
+      `✅ *Новость создана!*\n\n` +
+      `📌 Заголовок: ${title}\n` +
+      `🖼 С картинкой: ✅\n` +
+      `📅 Дата: ${new Date(news.createdAt).toLocaleString('ru-RU')}`,
+      { parse_mode: 'Markdown', reply_markup: adminKeyboard() }
+    );
+    return;
+  }
+
+  // Обычная оплата
+  if (userStates[userId] !== 'waiting_payment_proof') return;
 
   saveOrder(userId, {
     username: msg.from.username || '',
@@ -548,6 +967,227 @@ bot.on('callback_query', async (query) => {
     );
   }
 
+  // ── Новости ───────────────────────────────
+  else if (data === 'news') {
+    const allNews = getAllNews();
+    
+    if (allNews.length === 0) {
+      bot.editMessageText(
+        '📰 *Новости*\n\nПока нет новостей. Загляните позже! 👀',
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main' }]] }
+        }
+      );
+      return;
+    }
+    
+    // Показываем первую новость
+    const news = allNews[0];
+    const total = allNews.length;
+    
+    let newsText = 
+      `📰 *Новости* (${total} шт.)\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `*${news.title}*\n\n` +
+      `${news.text}\n\n` +
+      `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n` +
+      `👀 ${news.views || 0} просмотров\n` +
+      `━━━━━━━━━━━━━━━━━━━━━`;
+    
+    const keyboard = [];
+    if (allNews.length > 1) {
+      keyboard.push([{ text: '⏩ Следующая', callback_data: `news_${allNews[1].id}` }]);
+    }
+    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
+    
+    if (news.photoFileId) {
+      bot.editMessageMedia(
+        {
+          type: 'photo',
+          media: news.photoFileId,
+          caption: newsText,
+          parse_mode: 'Markdown'
+        },
+        { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: keyboard } }
+      );
+    } else {
+      bot.editMessageText(
+        newsText,
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard }
+        }
+      );
+    }
+    
+    // Увеличиваем счетчик просмотров
+    incrementNewsViews(news.id);
+  }
+  
+  // ── Листание новостей ─────────────────────
+  else if (data.startsWith('news_')) {
+    const newsId = parseInt(data.replace('news_', ''));
+    const allNews = getAllNews();
+    const currentIndex = allNews.findIndex(n => n.id === newsId);
+    
+    if (currentIndex === -1) {
+      bot.answerCallbackQuery(query.id, { text: 'Новость не найдена', show_alert: true });
+      return;
+    }
+    
+    const news = allNews[currentIndex];
+    const total = allNews.length;
+    
+    let newsText = 
+      `📰 *Новости* (${currentIndex + 1}/${total})\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `*${news.title}*\n\n` +
+      `${news.text}\n\n` +
+      `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n` +
+      `👀 ${news.views || 0} просмотров\n` +
+      `━━━━━━━━━━━━━━━━━━━━━`;
+    
+    const keyboard = [];
+    const row = [];
+    if (currentIndex < total - 1) {
+      row.push({ text: '⏩ Следующая', callback_data: `news_${allNews[currentIndex + 1].id}` });
+    }
+    if (currentIndex > 0) {
+      row.push({ text: '⏪ Предыдущая', callback_data: `news_${allNews[currentIndex - 1].id}` });
+    }
+    if (row.length > 0) {
+      keyboard.push(row);
+    }
+    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
+    
+    if (news.photoFileId) {
+      bot.editMessageMedia(
+        {
+          type: 'photo',
+          media: news.photoFileId,
+          caption: newsText,
+          parse_mode: 'Markdown'
+        },
+        { chat_id: chatId, message_id: msgId, reply_markup: { inline_keyboard: keyboard } }
+      );
+    } else {
+      bot.editMessageText(
+        newsText,
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: keyboard }
+        }
+      );
+    }
+    
+    // Увеличиваем счетчик просмотров
+    incrementNewsViews(news.id);
+  }
+
+  // ── Пропустить фото для новости ───────────
+  else if (data === 'news_skip_photo') {
+    const userId = fromUser.id;
+    const title = userStates[`${userId}_news_title`];
+    const newsText = userStates[`${userId}_news_text`];
+    
+    // Создаем новость без картинки
+    const news = createNews(title, newsText);
+    
+    userStates[userId] = null;
+    delete userStates[`${userId}_news_title`];
+    delete userStates[`${userId}_news_text`];
+    
+    bot.editMessageText(
+      `✅ *Новость создана!*\n\n` +
+      `📌 Заголовок: ${title}\n` +
+      `🖼 С картинкой: ❌\n` +
+      `📅 Дата: ${new Date(news.createdAt).toLocaleString('ru-RU')}`,
+      { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
+    );
+  }
+
+  // ── Реферальная система ────────────────────
+  else if (data === 'referral') {
+    const user = getUser(fromUser.id);
+    const refCode = user.referralCode;
+    const stats = getReferralStats(fromUser.id);
+    
+    const link = `https://t.me/${bot.options.username}?start=${refCode}`;
+    
+    let message = 
+      `👥 *Реферальная система*\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📋 *Ваш реферальный код:*\n` +
+      `\`${refCode}\`\n\n` +
+      `🔗 *Ссылка для приглашения:*\n` +
+      `[Нажми чтобы скопировать](${link})\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📊 *Приглашено друзей:* ${stats.total}\n\n` +
+      `🎁 *Награда за приглашение:*\n`;
+    
+    if (user.paid && user.subscriptionEnd) {
+      message += `• +3 дня к подписке за каждого друга\n`;
+    } else {
+      message += `• Скидка 10% на покупку за каждого друга\n`;
+    }
+    
+    message += 
+      `\n━━━━━━━━━━━━━━━━━━━━━\n` +
+      `💡 *Как это работает?*\n` +
+      `1️⃣ Отправь ссылку другу\n` +
+      `2️⃣ Друг переходит по ссылке\n` +
+      `3️⃣ Ты получаешь награду!\n` +
+      `━━━━━━━━━━━━━━━━━━━━━`;
+    
+    bot.editMessageText(
+      message,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📋 Скопировать код', callback_data: `copy_ref_${refCode}` }],
+            [{ text: '🔗 Поделиться ссылкой', callback_data: `share_ref_${refCode}` }],
+            [{ text: '🏠 Главное меню', callback_data: 'main' }]
+          ]
+        }
+      }
+    );
+  }
+
+  // ── Копировать реферальный код ────────────
+  else if (data.startsWith('copy_ref_')) {
+    const refCode = data.replace('copy_ref_', '');
+    bot.answerCallbackQuery(query.id, { 
+      text: `✅ Код скопирован: ${refCode}`, 
+      show_alert: true 
+    });
+  }
+
+  // ── Поделиться ссылкой ────────────────────
+  else if (data.startsWith('share_ref_')) {
+    const refCode = data.replace('share_ref_', '');
+    const link = `https://t.me/${bot.options.username}?start=${refCode}`;
+    
+    bot.sendMessage(
+      chatId,
+      `🔗 *Пригласи друга!*\n\n` +
+      `Отправь эту ссылку другу:\n` +
+      `${link}\n\n` +
+      `За каждого приглашенного друга ты получаешь награду! 🎁`,
+      { parse_mode: 'Markdown', disable_web_page_preview: true }
+    );
+  }
+
   // ── Промокод ──────────────────────────────
   else if (data === 'promocode') {
     userStates[fromUser.id] = 'waiting_promocode';
@@ -582,6 +1222,7 @@ bot.on('callback_query', async (query) => {
     const uname = fromUser.username ? `@${fromUser.username}` : 'не указан';
     const fullName = [fromUser.first_name, fromUser.last_name].filter(Boolean).join(' ');
     const order = getOrder(fromUser.id);
+    const stats = getReferralStats(fromUser.id);
     
     const hasValidSubscription = checkSubscription(fromUser.id);
     const subInfo = getSubscriptionInfo(fromUser.id);
@@ -604,6 +1245,7 @@ bot.on('callback_query', async (query) => {
       keyboard.push([{ text: '⬇️ Скачать лоадер', callback_data: 'download_loader' }]);
     }
 
+    keyboard.push([{ text: '👥 Пригласить друга', callback_data: 'referral' }]);
     keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
 
     if (isAdmin) {
@@ -617,6 +1259,7 @@ bot.on('callback_query', async (query) => {
         `📛 Username: ${uname}\n` +
         `🆔 ID: \`${fromUser.id}\`\n` +
         `💳 Статус: ${statusText}${subscriptionInfo}\n` +
+        `👥 Рефералов: *${stats.total}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }
     );
@@ -672,10 +1315,18 @@ bot.on('callback_query', async (query) => {
     if (!isAdmin) return;
 
     const pending = getPendingOrders();
+    const db = loadDB();
+    const totalUsers = Object.keys(db.users).length;
+    const activeSubs = Object.values(db.users).filter(u => u.paid && u.subscriptionEnd && new Date(u.subscriptionEnd) > new Date()).length;
+    const newsCount = db.news.length;
+    
     bot.editMessageText(
       `🔧 *Админ панель*\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `👥 Всего пользователей: *${totalUsers}*\n` +
+        `✅ Активных подписок: *${activeSubs}*\n` +
         `📋 Ожидают проверки: *${pending.length}*\n` +
+        `📰 Всего новостей: *${newsCount}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
@@ -815,6 +1466,68 @@ bot.on('callback_query', async (query) => {
     );
   }
 
+  // ── Создать новость ───────────────────────
+  else if (data === 'admin_create_news') {
+    if (!isAdmin) return;
+    
+    userStates[fromUser.id] = 'news_title';
+    
+    bot.editMessageText(
+      '📰 *Создание новости*\n\n' +
+      'Введите *заголовок* новости:\n\n' +
+      'Например: "Обновление лоадера v2.0"',
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_panel' }]] }
+      }
+    );
+  }
+
+  // ── Управление новостями ──────────────────
+  else if (data === 'admin_manage_news') {
+    if (!isAdmin) return;
+    
+    const allNews = getAllNews();
+    
+    if (allNews.length === 0) {
+      bot.editMessageText(
+        '📰 *Управление новостями*\n\nНет созданных новостей.',
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
+        }
+      );
+      return;
+    }
+    
+    let text = '📰 *Управление новостями*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
+    
+    allNews.forEach((news, index) => {
+      text += `${index + 1}. *${news.title}*\n`;
+      text += `📅 ${new Date(news.createdAt).toLocaleDateString('ru-RU')}\n`;
+      text += `👀 ${news.views || 0} просмотров\n`;
+      text += `🗑 /delete_${news.id} - удалить\n\n`;
+    });
+    
+    text += '━━━━━━━━━━━━━━━━━━━━━\n';
+    text += 'Для удаления новости отправьте команду:\n';
+    text += '`/delete_Номер`';
+    
+    bot.editMessageText(
+      text,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
+      }
+    );
+  }
+
   // ── Создать промокод ──────────────────────
   else if (data === 'admin_create_promocode') {
     if (!isAdmin) return;
@@ -902,10 +1615,113 @@ bot.on('callback_query', async (query) => {
       }
     );
   }
+
+  // ── Проверить напоминания (админ) ────────
+  else if (data === 'admin_check_reminders') {
+    if (!isAdmin) return;
+    
+    bot.editMessageText(
+      '🔄 *Проверка напоминаний*\n\nЗапускаю проверку всех подписок...',
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown'
+      }
+    );
+    
+    checkSubscriptionReminders();
+    
+    bot.sendMessage(
+      chatId,
+      '✅ Проверка завершена! Все напоминания отправлены.',
+      { reply_markup: adminKeyboard() }
+    );
+  }
+
+  // ── Топ рефералов ─────────────────────────
+  else if (data === 'admin_top_referrals') {
+    if (!isAdmin) return;
+    
+    const top = getTopReferrers(10);
+    
+    if (top.length === 0) {
+      bot.editMessageText(
+        '🏆 *Топ рефералов*\n\nПока нет ни одного реферала.',
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
+        }
+      );
+      return;
+    }
+    
+    let text = '🏆 *Топ рефералов*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
+    
+    top.forEach((user, index) => {
+      const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+      const name = user.username ? `@${user.username}` : user.firstName;
+      text += `${medal} ${name} — *${user.count}* рефералов\n`;
+    });
+    
+    text += '━━━━━━━━━━━━━━━━━━━━━';
+    
+    bot.editMessageText(
+      text,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
+      }
+    );
+  }
 });
 
 // ─────────────────────────────────────────────
-//  ЗАПУСК
+//  ОБРАБОТЧИК КОМАНД ДЛЯ УДАЛЕНИЯ НОВОСТЕЙ
+// ─────────────────────────────────────────────
+bot.onText(/\/delete_(\d+)/, (msg, match) => {
+  const userId = msg.from.id;
+  const isAdmin = (msg.from.username || '') === ADMIN_USERNAME;
+  
+  if (!isAdmin) return;
+  
+  const newsId = parseInt(match[1]);
+  const news = getNewsById(newsId);
+  
+  if (!news) {
+    bot.sendMessage(userId, '❌ Новость не найдена!');
+    return;
+  }
+  
+  deleteNews(newsId);
+  bot.sendMessage(
+    userId,
+    `✅ Новость "${news.title}" удалена!`,
+    { reply_markup: adminKeyboard() }
+  );
+});
+
+// ─────────────────────────────────────────────
+//  ЗАПУСК НАПОМИНАНИЙ
+// ─────────────────────────────────────────────
+
+// Запускаем проверку каждые 12 часов
+setInterval(() => {
+  console.log('🔄 Проверка подписок на напоминания...');
+  checkSubscriptionReminders();
+}, 12 * 60 * 60 * 1000);
+
+// Первая проверка через 1 минуту после запуска
+setTimeout(() => {
+  console.log('🔄 Первая проверка подписок...');
+  checkSubscriptionReminders();
+}, 60000);
+
+// ─────────────────────────────────────────────
+//  ЗАПУСК БОТА
 // ─────────────────────────────────────────────
 console.log('✅ Бот запущен...');
 
