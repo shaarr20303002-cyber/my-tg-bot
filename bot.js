@@ -1756,6 +1756,87 @@ setTimeout(() => {
 }, 60000);
 
 // ─────────────────────────────────────────────
+//  HTTP API ДЛЯ ЛОАДЕРА
+// ─────────────────────────────────────────────
+const http = require('http');
+
+const API_SECRET = 'th0rste1nar_secret_2024';
+const API_PORT = 3000;
+
+http.createServer((req, res) => {
+  if (req.method !== 'POST' || req.url !== '/check') {
+    res.writeHead(404);
+    return res.end('Not found');
+  }
+
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    try {
+      const { secret, username, hwid } = JSON.parse(body);
+
+      if (secret !== API_SECRET) {
+        res.writeHead(403);
+        return res.end(JSON.stringify({ status: 'ERROR', message: 'FORBIDDEN' }));
+      }
+
+      const db = loadDB();
+
+      // Ищем юзера по username
+      let userId = null;
+      for (const [id, data] of Object.entries(db.users)) {
+        if ((data.username || '').toLowerCase() === username.toLowerCase()) {
+          userId = id;
+          break;
+        }
+      }
+
+      if (!userId) {
+        res.writeHead(200);
+        return res.end(JSON.stringify({ status: 'ERROR', message: 'NOT_FOUND' }));
+      }
+
+      const user = db.users[userId];
+
+      if (!user.paid || !user.subscriptionEnd) {
+        res.writeHead(200);
+        return res.end(JSON.stringify({ status: 'ERROR', message: 'NO_SUB' }));
+      }
+
+      const now = new Date();
+      const endDate = new Date(user.subscriptionEnd);
+
+      if (now > endDate) {
+        user.paid = false;
+        user.subscriptionEnd = null;
+        saveDB(db);
+        res.writeHead(200);
+        return res.end(JSON.stringify({ status: 'ERROR', message: 'EXPIRED' }));
+      }
+
+      // HWID проверка
+      if (!user.hwid) {
+        db.users[userId].hwid = hwid;
+        saveDB(db);
+      } else if (user.hwid !== hwid) {
+        res.writeHead(200);
+        return res.end(JSON.stringify({ status: 'ERROR', message: 'HWID_MISMATCH' }));
+      }
+
+      const expire = endDate.toISOString().split('T')[0];
+      res.writeHead(200);
+      return res.end(JSON.stringify({ status: 'OK', expire }));
+
+    } catch (e) {
+      res.writeHead(400);
+      return res.end(JSON.stringify({ status: 'ERROR', message: 'BAD_REQUEST' }));
+    }
+  });
+}).listen(API_PORT, () => {
+  console.log(`✅ API сервер запущен на порту ${API_PORT}`);
+});
+
+// ─────────────────────────────────────────────
 //  ЗАПУСК БОТА
 // ─────────────────────────────────────────────
 console.log('✅ Бот запущен...');
