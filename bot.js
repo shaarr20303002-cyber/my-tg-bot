@@ -84,11 +84,11 @@ const userStates = {}; // userId -> state
 const catalog = [
   {
     id: 'velocity_crack',
-    name: 'velocity.cat crack',
+    name: '⚡️thorsteinar.pw',
     description:
-      '🐱 *velocity.cat crack*\n\n' +
+      '⚡️ *thorsteinar.pw*\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━\n' +
-      '📦 Продукт: velocity.cat crack\n' +
+      '📦 Продукт: ⚡️thorsteinar.pw\n' +
       '💎 Качество: Premium\n' +
       '🔄 Обновления: включены\n' +
       '⚡ Поставка: после подтверждения оплаты\n' +
@@ -254,7 +254,7 @@ bot.on('callback_query', async (query) => {
   // ── Каталог ───────────────────────────────
   else if (data === 'catalog') {
     const keyboard = catalog.map((item) => [
-      { text: `🐱 ${item.name}`, callback_data: `item_${item.id}` },
+      { text: `⚡️ ${item.name}`, callback_data: `item_${item.id}` },
     ]);
     keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
 
@@ -455,7 +455,7 @@ bot.on('callback_query', async (query) => {
     }
 
     bot.sendDocument(chatId, db.loaderFileId, {
-      caption: '🐱 *velocity.cat crack*\n\nТвой лоадер готов! Удачи 🚀',
+      caption: '⚡️ *thorsteinar.pw*\n\nТвой лоадер готов! Удачи 🚀',
       parse_mode: 'Markdown',
     });
   }
