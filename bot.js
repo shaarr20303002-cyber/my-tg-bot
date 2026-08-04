@@ -446,17 +446,17 @@ const catalog = [
 ];
 
 // ─────────────────────────────────────────────
-//  КЛАВИАТУРЫ С ПРЕМИУМ ЭМОДЗИ
+//  КЛАВИАТУРЫ С КРАСИВЫМИ ЭМОДЗИ
 // ─────────────────────────────────────────────
 function mainMenuKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: '<emoji id=5469002559030221208>💎</emoji> Каталог', callback_data: 'catalog' }],
-      [{ text: '<emoji id=5466006898884620552>📬</emoji> Подать заявку', callback_data: 'submit_order' }],
-      [{ text: '<emoji id=5469002559030221208>🎟️</emoji> Промокод', callback_data: 'promocode' }],
-      [{ text: '<emoji id=5471661478822624936>🤝</emoji> Пригласить друга', callback_data: 'referral' }],
-      [{ text: '<emoji id=5472266202529246376>👑</emoji> Профиль', callback_data: 'profile' }],
-      [{ text: '<emoji id=5471661478822624936>✨</emoji> Реселлеры', callback_data: 'resellers' }],
+      [{ text: '🛍️ Каталог', callback_data: 'catalog' }],
+      [{ text: '📩 Подать заявку', callback_data: 'submit_order' }],
+      [{ text: '🎫 Промокод', callback_data: 'promocode' }],
+      [{ text: '👥 Пригласить друга', callback_data: 'referral' }],
+      [{ text: '👤 Профиль', callback_data: 'profile' }],
+      [{ text: '🤝 Реселлеры', callback_data: 'resellers' }],
     ],
   };
 }
@@ -464,13 +464,13 @@ function mainMenuKeyboard() {
 function adminKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: '<emoji id=5452875526920350824>📜</emoji> Список заявок', callback_data: 'admin_orders' }],
-      [{ text: '<emoji id=5466006898884620552>📤</emoji> Загрузить лоадер', callback_data: 'admin_upload_loader' }],
-      [{ text: '<emoji id=5469002559030221208>🎟️</emoji> Создать промокод', callback_data: 'admin_create_promocode' }],
-      [{ text: '<emoji id=5469002559030221208>📊</emoji> Список промокодов', callback_data: 'admin_list_promocodes' }],
-      [{ text: '<emoji id=5452875526920350824>🏆</emoji> Топ рефералов', callback_data: 'admin_top_referrals' }],
-      [{ text: '<emoji id=5466006898884620552>⏳</emoji> Проверить напоминания', callback_data: 'admin_check_reminders' }],
-      [{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }],
+      [{ text: '📋 Список заявок', callback_data: 'admin_orders' }],
+      [{ text: '📤 Загрузить лоадер', callback_data: 'admin_upload_loader' }],
+      [{ text: '🎫 Создать промокод', callback_data: 'admin_create_promocode' }],
+      [{ text: '📊 Список промокодов', callback_data: 'admin_list_promocodes' }],
+      [{ text: '🏆 Топ рефералов', callback_data: 'admin_top_referrals' }],
+      [{ text: '⏰ Проверить напоминания', callback_data: 'admin_check_reminders' }],
+      [{ text: '🏠 Главное меню', callback_data: 'main' }],
     ],
   };
 }
@@ -508,7 +508,7 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
 
   bot.sendMessage(
     msg.chat.id,
-    `<emoji id=5472266202529246376>👋</emoji> Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
+    `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
     { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
   );
 });
@@ -518,7 +518,6 @@ bot.on('text', async (msg) => {
   const userId = msg.from.id;
   const text = msg.text;
   
-  // Проверяем, ждет ли пользователь ввод реферального кода
   if (userStates[userId] === 'waiting_referral_code') {
     const result = processReferral(userId, text.toUpperCase());
     userStates[userId] = null;
@@ -531,7 +530,6 @@ bot.on('text', async (msg) => {
     return;
   }
   
-  // Проверяем, ждет ли пользователь ввод промокода
   if (userStates[userId] === 'waiting_promocode') {
     const result = usePromocode(userId, text.toUpperCase());
     userStates[userId] = null;
@@ -544,7 +542,6 @@ bot.on('text', async (msg) => {
     return;
   }
   
-  // Создание промокода админом
   if (userStates[userId] === 'promo_discount' || userStates[userId] === 'promo_free') {
     const value = parseInt(text);
     if (isNaN(value) || value <= 0) {
@@ -560,10 +557,10 @@ bot.on('text', async (msg) => {
     
     bot.sendMessage(
       msg.chat.id,
-      `<emoji id=5469002559030221208>✅</emoji> *Промокод создан!*\n\n` +
-      `<emoji id=5469002559030221208>🎫</emoji> Код: \`${code}\`\n` +
-      `<emoji id=5472266202529246376>📌</emoji> Тип: ${typeName}\n` +
-      `<emoji id=5469002559030221208>📊</emoji> Значение: ${value}${type === 'discount' ? '%' : ' дней'}\n\n` +
+      `✅ *Промокод создан!*\n\n` +
+      `🎫 Код: \`${code}\`\n` +
+      `📌 Тип: ${typeName}\n` +
+      `📊 Значение: ${value}${type === 'discount' ? '%' : ' дней'}\n\n` +
       `Промокод действителен 30 дней.`,
       { parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
@@ -588,7 +585,7 @@ bot.on('photo', async (msg) => {
 
   bot.sendMessage(
     msg.chat.id,
-    '<emoji id=5466006898884620552>✅</emoji> *Скриншот оплаты получен!*\n\n⏳ Ожидайте подтверждения от администратора.',
+    '✅ *Скриншот оплаты получен!*\n\n⏳ Ожидайте подтверждения от администратора.',
     { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
   );
 
@@ -610,7 +607,7 @@ bot.on('document', async (msg) => {
 
   userStates[userId] = null;
 
-  bot.sendMessage(msg.chat.id, '<emoji id=5466006898884620552>✅</emoji> Файл лоадера сохранён!', {
+  bot.sendMessage(msg.chat.id, '✅ Файл лоадера сохранён!', {
     reply_markup: adminKeyboard(),
   });
 });
@@ -631,15 +628,15 @@ async function notifyAdmin(userId, fromUser, photoFileId) {
 
   await bot.sendPhoto(adminChatId, photoFileId, {
     caption:
-      `<emoji id=5450877487804585157>🔔</emoji> *Новая заявка!*\n\n` +
-      `<emoji id=5472266202529246376>👤</emoji> Пользователь: ${uname}\n` +
-      `<emoji id=5472266202529246376>🆔</emoji> ID: \`${userId}\``,
+      `🔔 *Новая заявка!*\n\n` +
+      `👤 Пользователь: ${uname}\n` +
+      `🆔 ID: \`${userId}\``,
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '<emoji id=5466006898884620552>✅</emoji> Одобрить', callback_data: `approve_${userId}` },
-          { text: '<emoji id=5469002559030221208>❌</emoji> Отклонить', callback_data: `reject_${userId}` },
+          { text: '✅ Одобрить', callback_data: `approve_${userId}` },
+          { text: '❌ Отклонить', callback_data: `reject_${userId}` },
         ],
       ],
     },
@@ -662,7 +659,7 @@ bot.on('callback_query', async (query) => {
   if (data === 'main') {
     const name = fromUser.first_name || 'пользователь';
     bot.editMessageText(
-      `<emoji id=5472266202529246376>👋</emoji> Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
+      `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
     );
   }
@@ -670,12 +667,12 @@ bot.on('callback_query', async (query) => {
   // ── Каталог ───────────────────────────────
   else if (data === 'catalog') {
     const keyboard = catalog.map((item) => [
-      { text: `<emoji id=5469002559030221208>⚡️</emoji> ${item.name}`, callback_data: `item_${item.id}` },
+      { text: `⚡️ ${item.name}`, callback_data: `item_${item.id}` },
     ]);
-    keyboard.push([{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]);
+    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
 
     bot.editMessageText(
-      '<emoji id=5469002559030221208>🛍</emoji> *Каталог*\n\n━━━━━━━━━━━━━━━━━━━━━\nВыбери товар 👇',
+      '🛍️ *Каталог*\n\n━━━━━━━━━━━━━━━━━━━━━\nВыбери товар 👇',
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }
     );
   }
@@ -692,9 +689,9 @@ bot.on('callback_query', async (query) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '<emoji id=5466006898884620552>✅</emoji> Buy', callback_data: `buy_${item.id}` }],
-          [{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'catalog' }],
-          [{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }],
+          [{ text: '✅ Buy', callback_data: `buy_${item.id}` }],
+          [{ text: '⬅️ Назад', callback_data: 'catalog' }],
+          [{ text: '🏠 Главное меню', callback_data: 'main' }],
         ],
       },
     });
@@ -707,12 +704,12 @@ bot.on('callback_query', async (query) => {
 
     if (hasValidSubscription) {
       bot.editMessageText(
-        '<emoji id=5466006898884620552>✅</emoji> У тебя уже есть активная подписка!\n\nПерейди в 👑 Профиль чтобы скачать лоадер.',
+        '✅ У тебя уже есть активная подписка!\n\nПерейди в 👤 Профиль чтобы скачать лоадер.',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5472266202529246376>👑</emoji> Профиль', callback_data: 'profile' }]] },
+          reply_markup: { inline_keyboard: [[{ text: '👤 Профиль', callback_data: 'profile' }]] },
         }
       );
       return;
@@ -720,12 +717,12 @@ bot.on('callback_query', async (query) => {
 
     if (order && order.status === 'pending') {
       bot.editMessageText(
-        '<emoji id=5466006898884620552>⏳</emoji> Твоя заявка уже на проверке.',
+        '⏳ Твоя заявка уже на проверке.',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]] },
+          reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main' }]] },
         }
       );
       return;
@@ -734,7 +731,7 @@ bot.on('callback_query', async (query) => {
     userStates[fromUser.id] = 'waiting_payment_proof';
 
     bot.editMessageText(
-      '<emoji id=5469002559030221208>💳</emoji> *Оплата*\n\n' +
+      '💳 *Оплата*\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━\n' +
         '1️⃣ Напишите менеджеру для уточнения цены:\n' +
         '👤 @hardwareexploit\n\n' +
@@ -747,8 +744,8 @@ bot.on('callback_query', async (query) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5471661478822624936>💬</emoji> Написать @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'cancel_payment' }],
+            [{ text: '💬 Написать @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
+            [{ text: '❌ Отмена', callback_data: 'cancel_payment' }],
           ],
         },
       }
@@ -762,12 +759,12 @@ bot.on('callback_query', async (query) => {
 
     if (hasValidSubscription) {
       bot.editMessageText(
-        '<emoji id=5466006898884620552>✅</emoji> У тебя уже есть активная подписка!',
+        '✅ У тебя уже есть активная подписка!',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5472266202529246376>👑</emoji> Профиль', callback_data: 'profile' }], [{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]] },
+          reply_markup: { inline_keyboard: [[{ text: '👤 Профиль', callback_data: 'profile' }], [{ text: '🏠 Главное меню', callback_data: 'main' }]] },
         }
       );
       return;
@@ -775,12 +772,12 @@ bot.on('callback_query', async (query) => {
 
     if (order && order.status === 'pending') {
       bot.editMessageText(
-        '<emoji id=5466006898884620552>⏳</emoji> *Твоя заявка уже на проверке.*',
+        '⏳ *Твоя заявка уже на проверке.*',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]] },
+          reply_markup: { inline_keyboard: [[{ text: '🏠 Главное меню', callback_data: 'main' }]] },
         }
       );
       return;
@@ -789,7 +786,7 @@ bot.on('callback_query', async (query) => {
     userStates[fromUser.id] = 'waiting_payment_proof';
 
     bot.editMessageText(
-      '<emoji id=5466006898884620552>📬</emoji> *Подача заявки*\n\n' +
+      '📩 *Подача заявки*\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━\n' +
         '1️⃣ Оплатите товар через реселлера:\n' +
         '👤 @hardwareexploit\n\n' +
@@ -802,8 +799,8 @@ bot.on('callback_query', async (query) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5471661478822624936>💬</emoji> Написать @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'cancel_payment' }],
+            [{ text: '💬 Написать @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
+            [{ text: '❌ Отмена', callback_data: 'cancel_payment' }],
           ],
         },
       }
@@ -821,15 +818,15 @@ bot.on('callback_query', async (query) => {
     const link = `https://t.me/${botUsername}?start=${refCode}`;
     
     let message = 
-      `<emoji id=5471661478822624936>👥</emoji> *Реферальная система*\n\n` +
+      `👥 *Реферальная система*\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━\n` +
-      `<emoji id=5472266202529246376>📋</emoji> *Ваш реферальный код:*\n` +
+      `📋 *Ваш реферальный код:*\n` +
       `\`${refCode}\`\n\n` +
-      `<emoji id=5469002559030221208>🔗</emoji> *Ссылка для приглашения:*\n` +
+      `🔗 *Ссылка для приглашения:*\n` +
       `\`${link}\`\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━\n` +
-      `<emoji id=5469002559030221208>📊</emoji> *Приглашено друзей:* ${stats.total}\n\n` +
-      `<emoji id=5469002559030221208>🎁</emoji> *Награда за приглашение:*\n`;
+      `📊 *Приглашено друзей:* ${stats.total}\n\n` +
+      `🎁 *Награда за приглашение:*\n`;
     
     const hasValidSubscription = checkSubscription(fromUser.id);
     if (hasValidSubscription) {
@@ -840,7 +837,7 @@ bot.on('callback_query', async (query) => {
     
     message += 
       `\n━━━━━━━━━━━━━━━━━━━━━\n` +
-      `<emoji id=5450877487804585157>💡</emoji> *Как это работает?*\n` +
+      `💡 *Как это работает?*\n` +
       `1️⃣ Отправь ссылку другу\n` +
       `2️⃣ Друг переходит по ссылке\n` +
       `3️⃣ Ты получаешь награду!\n` +
@@ -855,10 +852,10 @@ bot.on('callback_query', async (query) => {
         disable_web_page_preview: true,
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5472266202529246376>📋</emoji> Скопировать код', callback_data: `copy_ref_${refCode}` }],
-            [{ text: '<emoji id=5469002559030221208>📋</emoji> Скопировать ссылку', callback_data: `copy_link_${refCode}` }],
-            [{ text: '<emoji id=5469002559030221208>🔗</emoji> Поделиться ссылкой', callback_data: `share_ref_${refCode}` }],
-            [{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]
+            [{ text: '📋 Скопировать код', callback_data: `copy_ref_${refCode}` }],
+            [{ text: '📋 Скопировать ссылку', callback_data: `copy_link_${refCode}` }],
+            [{ text: '🔗 Поделиться ссылкой', callback_data: `share_ref_${refCode}` }],
+            [{ text: '🏠 Главное меню', callback_data: 'main' }]
           ]
         }
       }
@@ -896,7 +893,7 @@ bot.on('callback_query', async (query) => {
     
     bot.sendMessage(
       chatId,
-      `<emoji id=5469002559030221208>🔗</emoji> *Пригласи друга!*\n\n` +
+      `🔗 *Пригласи друга!*\n\n` +
       `Отправь эту ссылку другу:\n` +
       `${link}\n\n` +
       `За каждого приглашенного друга ты получаешь награду! 🎁`,
@@ -909,14 +906,14 @@ bot.on('callback_query', async (query) => {
     userStates[fromUser.id] = 'waiting_promocode';
     
     bot.editMessageText(
-      '<emoji id=5469002559030221208>🎟️</emoji> *Введите промокод*\n\nОтправьте код текстом в этот чат.',
+      '🎫 *Введите промокод*\n\nОтправьте код текстом в этот чат.',
       {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'main' }]
+            [{ text: '❌ Отмена', callback_data: 'main' }]
           ]
         }
       }
@@ -927,7 +924,7 @@ bot.on('callback_query', async (query) => {
   else if (data === 'cancel_payment') {
     userStates[fromUser.id] = null;
     bot.editMessageText(
-      '<emoji id=5469002559030221208>❌</emoji> Отменено.',
+      '❌ Отменено.',
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
     );
   }
@@ -958,24 +955,24 @@ bot.on('callback_query', async (query) => {
     const keyboard = [];
 
     if (hasValidSubscription) {
-      keyboard.push([{ text: '<emoji id=5466006898884620552>⬇️</emoji> Скачать лоадер', callback_data: 'download_loader' }]);
+      keyboard.push([{ text: '⬇️ Скачать лоадер', callback_data: 'download_loader' }]);
     }
 
-    keyboard.push([{ text: '<emoji id=5471661478822624936>👥</emoji> Пригласить друга', callback_data: 'referral' }]);
-    keyboard.push([{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }]);
+    keyboard.push([{ text: '👥 Пригласить друга', callback_data: 'referral' }]);
+    keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
 
     if (isAdmin) {
-      keyboard.push([{ text: '<emoji id=5450877487804585157>🔧</emoji> Админ панель', callback_data: 'admin_panel' }]);
+      keyboard.push([{ text: '🔧 Админ панель', callback_data: 'admin_panel' }]);
     }
 
     bot.editMessageText(
-      `<emoji id=5472266202529246376>👑</emoji> *Профиль*\n\n` +
+      `👤 *Профиль*\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
-        `<emoji id=5472266202529246376>🔖</emoji> Имя: *${fullName}*\n` +
-        `<emoji id=5472266202529246376>📛</emoji> Username: ${uname}\n` +
-        `<emoji id=5472266202529246376>🆔</emoji> ID: \`${fromUser.id}\`\n` +
-        `<emoji id=5469002559030221208>💳</emoji> Статус: ${statusText}${subscriptionInfo}\n` +
-        `<emoji id=5471661478822624936>👥</emoji> Рефералов: *${stats.total}*\n` +
+        `🔖 Имя: *${fullName}*\n` +
+        `📛 Username: ${uname}\n` +
+        `🆔 ID: \`${fromUser.id}\`\n` +
+        `💳 Статус: ${statusText}${subscriptionInfo}\n` +
+        `👥 Рефералов: *${stats.total}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }
     );
@@ -997,7 +994,7 @@ bot.on('callback_query', async (query) => {
     }
 
     bot.sendDocument(chatId, db.loaderFileId, {
-      caption: '<emoji id=5469002559030221208>⚡️</emoji> *thorsteinar.pw*\n\nТвой лоадер готов! 🚀',
+      caption: '⚡️ *thorsteinar.pw*\n\nТвой лоадер готов! 🚀',
       parse_mode: 'Markdown',
     });
   }
@@ -1005,7 +1002,7 @@ bot.on('callback_query', async (query) => {
   // ── Реселлеры ─────────────────────────────
   else if (data === 'resellers') {
     bot.editMessageText(
-      `<emoji id=5471661478822624936>🤝</emoji> *Реселлеры*\n\n` +
+      `🤝 *Реселлеры*\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
         `1. 👤 @hardwareexploit\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
@@ -1015,8 +1012,8 @@ bot.on('callback_query', async (query) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5471661478822624936>💬</emoji> @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
-            [{ text: '<emoji id=5450877487804585157>🏠</emoji> Главное меню', callback_data: 'main' }],
+            [{ text: '💬 @hardwareexploit', url: 'https://t.me/hardwareexploit' }],
+            [{ text: '🏠 Главное меню', callback_data: 'main' }],
           ],
         },
       }
@@ -1036,11 +1033,11 @@ bot.on('callback_query', async (query) => {
     const activeSubs = Object.values(db.users).filter(u => u.paid && u.subscriptionEnd && new Date(u.subscriptionEnd) > new Date()).length;
     
     bot.editMessageText(
-      `<emoji id=5450877487804585157>🔧</emoji> *Админ панель*\n\n` +
+      `🔧 *Админ панель*\n\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n` +
-        `<emoji id=5471661478822624936>👥</emoji> Всего пользователей: *${totalUsers}*\n` +
-        `<emoji id=5466006898884620552>✅</emoji> Активных подписок: *${activeSubs}*\n` +
-        `<emoji id=5472266202529246376>📋</emoji> Ожидают проверки: *${pending.length}*\n` +
+        `👥 Всего пользователей: *${totalUsers}*\n` +
+        `✅ Активных подписок: *${activeSubs}*\n` +
+        `📋 Ожидают проверки: *${pending.length}*\n` +
         `━━━━━━━━━━━━━━━━━━━━━`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
@@ -1052,12 +1049,12 @@ bot.on('callback_query', async (query) => {
     const pending = getPendingOrders();
     if (pending.length === 0) {
       bot.editMessageText(
-        '<emoji id=5472266202529246376>📋</emoji> *Заявки*\n\nНет новых заявок.',
+        '📋 *Заявки*\n\nНет новых заявок.',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }]] },
+          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] },
         }
       );
       return;
@@ -1067,10 +1064,10 @@ bot.on('callback_query', async (query) => {
     const uname = order.username ? `@${order.username}` : order.firstName;
 
     bot.editMessageText(
-      `<emoji id=5472266202529246376>📋</emoji> *Заявки* (${pending.length} шт.)\n\n` +
-        `<emoji id=5472266202529246376>👤</emoji> Пользователь: ${uname}\n` +
-        `<emoji id=5472266202529246376>🆔</emoji> ID: \`${order.userId}\`\n` +
-        `<emoji id=5452875526920350824>📅</emoji> Дата: ${new Date(order.date).toLocaleString('ru-RU')}`,
+      `📋 *Заявки* (${pending.length} шт.)\n\n` +
+        `👤 Пользователь: ${uname}\n` +
+        `🆔 ID: \`${order.userId}\`\n` +
+        `📅 Дата: ${new Date(order.date).toLocaleString('ru-RU')}`,
       {
         chat_id: chatId,
         message_id: msgId,
@@ -1078,10 +1075,10 @@ bot.on('callback_query', async (query) => {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '<emoji id=5466006898884620552>✅</emoji> Одобрить', callback_data: `approve_${order.userId}` },
-              { text: '<emoji id=5469002559030221208>❌</emoji> Отклонить', callback_data: `reject_${order.userId}` },
+              { text: '✅ Одобрить', callback_data: `approve_${order.userId}` },
+              { text: '❌ Отклонить', callback_data: `reject_${order.userId}` },
             ],
-            [{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }],
+            [{ text: '⬅️ Назад', callback_data: 'admin_panel' }],
           ],
         },
       }
@@ -1100,17 +1097,17 @@ bot.on('callback_query', async (query) => {
     updateOrderStatus(targetUserId, 'approved');
     
     bot.editMessageText(
-      `<emoji id=5466006898884620552>✅</emoji> *Выдача подписки*\n\nВыберите период:`,
+      `✅ *Выдача подписки*\n\nВыберите период:`,
       {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5452875526920350824>📅</emoji> 30 дней', callback_data: `sub_${targetUserId}_30` }],
-            [{ text: '<emoji id=5452875526920350824>📅</emoji> 60 дней', callback_data: `sub_${targetUserId}_60` }],
-            [{ text: '<emoji id=5452875526920350824>📅</emoji> 100 дней', callback_data: `sub_${targetUserId}_100` }],
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'admin_panel' }]
+            [{ text: '📅 30 дней', callback_data: `sub_${targetUserId}_30` }],
+            [{ text: '📅 60 дней', callback_data: `sub_${targetUserId}_60` }],
+            [{ text: '📅 100 дней', callback_data: `sub_${targetUserId}_100` }],
+            [{ text: '❌ Отмена', callback_data: 'admin_panel' }]
           ]
         }
       }
@@ -1129,17 +1126,17 @@ bot.on('callback_query', async (query) => {
     
     bot.sendMessage(
       targetUserId,
-      `<emoji id=5469002559030221208>🎉</emoji> *Подписка активирована!*\n\n<emoji id=5452875526920350824>📅</emoji> Период: *${days} дней*\n\nСкачай лоадер в 👑 Профиль.`,
+      `🎉 *Подписка активирована!*\n\n📅 Период: *${days} дней*\n\nСкачай лоадер в 👤 Профиль.`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [[{ text: '<emoji id=5472266202529246376>👑</emoji> Профиль', callback_data: 'profile' }]],
+          inline_keyboard: [[{ text: '👤 Профиль', callback_data: 'profile' }]],
         },
       }
     );
 
     bot.editMessageText(
-      `<emoji id=5466006898884620552>✅</emoji> Пользователю \`${targetUserId}\` выдана подписка на *${days} дней*.`,
+      `✅ Пользователю \`${targetUserId}\` выдана подписка на *${days} дней*.`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
   }
@@ -1153,12 +1150,12 @@ bot.on('callback_query', async (query) => {
 
     bot.sendMessage(
       targetUserId,
-      '<emoji id=5469002559030221208>❌</emoji> *Оплата отклонена.*\n\nНапиши @hardwareexploit если ошибка.',
+      '❌ *Оплата отклонена.*\n\nНапиши @hardwareexploit если ошибка.',
       { parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
     );
 
     bot.editMessageText(
-      `<emoji id=5469002559030221208>❌</emoji> Заявка \`${targetUserId}\` *отклонена*.`,
+      `❌ Заявка \`${targetUserId}\` *отклонена*.`,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: adminKeyboard() }
     );
   }
@@ -1170,12 +1167,12 @@ bot.on('callback_query', async (query) => {
     userStates[fromUser.id] = 'waiting_loader_file';
 
     bot.editMessageText(
-      '<emoji id=5466006898884620552>📤</emoji> *Загрузка лоадера*\n\nОтправь файл лоадера в этот чат.',
+      '📤 *Загрузка лоадера*\n\nОтправь файл лоадера в этот чат.',
       {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'admin_panel' }]] },
+        reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'admin_panel' }]] },
       }
     );
   }
@@ -1185,16 +1182,16 @@ bot.on('callback_query', async (query) => {
     if (!isAdmin) return;
     
     bot.editMessageText(
-      '<emoji id=5469002559030221208>🎟️</emoji> *Создание промокода*\n\nВыберите тип:',
+      '🎫 *Создание промокода*\n\nВыберите тип:',
       {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5469002559030221208>💰</emoji> Скидка (%)', callback_data: 'promo_type_discount' }],
-            [{ text: '<emoji id=5469002559030221208>🎁</emoji> Бесплатная подписка', callback_data: 'promo_type_free' }],
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'admin_panel' }]
+            [{ text: '💰 Скидка (%)', callback_data: 'promo_type_discount' }],
+            [{ text: '🎁 Бесплатная подписка', callback_data: 'promo_type_free' }],
+            [{ text: '❌ Отмена', callback_data: 'admin_panel' }]
           ]
         }
       }
@@ -1210,14 +1207,14 @@ bot.on('callback_query', async (query) => {
     const typeName = data === 'promo_type_discount' ? 'скидку (%)' : 'количество дней';
     
     bot.editMessageText(
-      `<emoji id=5469002559030221208>🎟️</emoji> *Создание промокода*\n\nВведите ${typeName}:\n\nНапример: \`${data === 'promo_type_discount' ? '20' : '30'}\``,
+      `🎫 *Создание промокода*\n\nВведите ${typeName}:\n\nНапример: \`${data === 'promo_type_discount' ? '20' : '30'}\``,
       {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
-            [{ text: '<emoji id=5469002559030221208>❌</emoji> Отмена', callback_data: 'admin_panel' }]
+            [{ text: '❌ Отмена', callback_data: 'admin_panel' }]
           ]
         }
       }
@@ -1233,26 +1230,26 @@ bot.on('callback_query', async (query) => {
     
     if (codes.length === 0) {
       bot.editMessageText(
-        '<emoji id=5469002559030221208>📊</emoji> *Промокоды*\n\nНет созданных промокодов.',
+        '📊 *Промокоды*\n\nНет созданных промокодов.',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }]] }
+          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
         }
       );
       return;
     }
     
-    let text = '<emoji id=5469002559030221208>📊</emoji> *Список промокодов*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
+    let text = '📊 *Список промокодов*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
     
     codes.forEach((code) => {
       const promo = promocodes[code];
-      const status = promo.used ? '<emoji id=5469002559030221208>❌</emoji> Использован' : '<emoji id=5466006898884620552>✅</emoji> Активен';
-      const type = promo.type === 'discount' ? `<emoji id=5469002559030221208>💰</emoji> ${promo.value}%` : `<emoji id=5469002559030221208>🎁</emoji> ${promo.value} дней`;
-      const usedBy = promo.usedBy ? `\n<emoji id=5472266202529246376>👤</emoji> ID: \`${promo.usedBy}\`` : '';
+      const status = promo.used ? '❌ Использован' : '✅ Активен';
+      const type = promo.type === 'discount' ? `💰 ${promo.value}%` : `🎁 ${promo.value} дней`;
+      const usedBy = promo.usedBy ? `\n👤 ID: \`${promo.usedBy}\`` : '';
       
-      text += `<emoji id=5469002559030221208>🎫</emoji> \`${code}\`\n${type}\n${status}${usedBy}\n\n`;
+      text += `🎫 \`${code}\`\n📌 ${type}\n📊 ${status}${usedBy}\n\n`;
     });
     
     text += '━━━━━━━━━━━━━━━━━━━━━';
@@ -1263,7 +1260,7 @@ bot.on('callback_query', async (query) => {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }]] }
+        reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
       }
     );
   }
@@ -1273,7 +1270,7 @@ bot.on('callback_query', async (query) => {
     if (!isAdmin) return;
     
     bot.editMessageText(
-      '<emoji id=5466006898884620552>⏳</emoji> *Проверка напоминаний*\n\nЗапускаю проверку всех подписок...',
+      '🔄 *Проверка напоминаний*\n\nЗапускаю проверку всех подписок...',
       {
         chat_id: chatId,
         message_id: msgId,
@@ -1285,7 +1282,7 @@ bot.on('callback_query', async (query) => {
     
     bot.sendMessage(
       chatId,
-      '<emoji id=5466006898884620552>✅</emoji> Проверка завершена! Все напоминания отправлены.',
+      '✅ Проверка завершена! Все напоминания отправлены.',
       { reply_markup: adminKeyboard() }
     );
   }
@@ -1298,21 +1295,21 @@ bot.on('callback_query', async (query) => {
     
     if (top.length === 0) {
       bot.editMessageText(
-        '<emoji id=5452875526920350824>🏆</emoji> *Топ рефералов*\n\nПока нет ни одного реферала.',
+        '🏆 *Топ рефералов*\n\nПока нет ни одного реферала.',
         {
           chat_id: chatId,
           message_id: msgId,
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }]] }
+          reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
         }
       );
       return;
     }
     
-    let text = '<emoji id=5452875526920350824>🏆</emoji> *Топ рефералов*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
+    let text = '🏆 *Топ рефералов*\n\n━━━━━━━━━━━━━━━━━━━━━\n';
     
     top.forEach((user, index) => {
-      const medal = index === 0 ? '<emoji id=5452875526920350824>🥇</emoji>' : index === 1 ? '<emoji id=5452875526920350824>🥈</emoji>' : index === 2 ? '<emoji id=5452875526920350824>🥉</emoji>' : `${index + 1}.`;
+      const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
       const name = user.username ? `@${user.username}` : user.firstName;
       text += `${medal} ${name} — *${user.count}* рефералов\n`;
     });
@@ -1325,7 +1322,7 @@ bot.on('callback_query', async (query) => {
         chat_id: chatId,
         message_id: msgId,
         parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: [[{ text: '<emoji id=5450877487804585157>⬅️</emoji> Назад', callback_data: 'admin_panel' }]] }
+        reply_markup: { inline_keyboard: [[{ text: '⬅️ Назад', callback_data: 'admin_panel' }]] }
       }
     );
   }
@@ -1335,21 +1332,16 @@ bot.on('callback_query', async (query) => {
 //  ЗАПУСК НАПОМИНАНИЙ
 // ─────────────────────────────────────────────
 
-// Запускаем проверку каждые 12 часов
 setInterval(() => {
   console.log('🔄 Проверка подписок на напоминания...');
   checkSubscriptionReminders();
 }, 12 * 60 * 60 * 1000);
 
-// Первая проверка через 1 минуту после запуска
 setTimeout(() => {
   console.log('🔄 Первая проверка подписок...');
   checkSubscriptionReminders();
 }, 60000);
 
-// ─────────────────────────────────────────────
-//  ЗАПУСК БОТА
-// ─────────────────────────────────────────────
 console.log('✅ Бот запущен...');
 
 bot.on('polling_error', (err) => {
