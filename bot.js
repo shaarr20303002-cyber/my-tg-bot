@@ -45,7 +45,7 @@ function getUser(userId) {
       referredBy: null,
       referrals: [],
       discountUsed: false,
-      lastNewsId: 0 // Для отслеживания просмотренных новостей
+      lastNewsId: 0
     };
     saveDB(db);
   }
@@ -73,6 +73,31 @@ function setUserSubscription(userId, days) {
   db.users[userId].subscriptionDays = days;
   db.users[userId].remindersSent = [];
   saveDB(db);
+}
+
+function addSubscriptionDays(userId, days) {
+  const db = loadDB();
+  const user = db.users[userId];
+  if (!user) return false;
+  
+  if (!user.paid || !user.subscriptionEnd) {
+    user.discountAvailable = true;
+    user.discountUsed = false;
+    saveDB(db);
+    return { type: 'discount', message: '🎉 Вы получили скидку 10% на следующую покупку!' };
+  }
+  
+  const currentEnd = new Date(user.subscriptionEnd);
+  const newEnd = new Date(currentEnd.getTime() + days * 24 * 60 * 60 * 1000);
+  user.subscriptionEnd = newEnd.toISOString();
+  user.subscriptionDays += days;
+  saveDB(db);
+  
+  return { 
+    type: 'subscription', 
+    message: `🎉 Вы получили +${days} дней к подписке!`,
+    days: days
+  };
 }
 
 function checkSubscription(userId) {
@@ -165,7 +190,7 @@ function createNews(title, text, photoFileId = null) {
 
 function getAllNews() {
   const db = loadDB();
-  return db.news.reverse(); // Новые сначала
+  return db.news.reverse();
 }
 
 function getLastNews() {
@@ -562,16 +587,13 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
     }
   }
 
-  // Показываем последнюю новость при входе
   const lastNews = getLastNews();
   let welcomeMessage = `👋 Привет, *${name}*!\n\nДобро пожаловать в наш магазин.\nВыбери раздел ниже 👇`;
   
   if (lastNews && lastNews.id !== db.users[userId].lastNewsId) {
-    // Сохраняем ID просмотренной новости
     db.users[userId].lastNewsId = lastNews.id;
     saveDB(db);
     
-    // Отправляем новость отдельным сообщением
     const newsText = 
       `📰 *НОВОСТЬ!*\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -609,7 +631,7 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
   );
 });
 
-// Прием текста (промокоды, новости и т.д.)
+// Прием текста
 bot.on('text', async (msg) => {
   const userId = msg.from.id;
   const text = msg.text;
@@ -705,17 +727,15 @@ bot.on('text', async (msg) => {
   }
 });
 
-// Прием фото (скриншот оплаты ИЛИ картинка для новости)
+// Прием фото
 bot.on('photo', async (msg) => {
   const userId = msg.from.id;
   const photoFileId = msg.photo[msg.photo.length - 1].file_id;
 
-  // Если админ создает новость с картинкой
   if (userStates[userId] === 'news_photo') {
     const title = userStates[`${userId}_news_title`];
     const newsText = userStates[`${userId}_news_text`];
     
-    // Создаем новость с картинкой
     const news = createNews(title, newsText, photoFileId);
     
     userStates[userId] = null;
@@ -733,7 +753,6 @@ bot.on('photo', async (msg) => {
     return;
   }
 
-  // Обычная оплата
   if (userStates[userId] !== 'waiting_payment_proof') return;
 
   saveOrder(userId, {
@@ -984,7 +1003,6 @@ bot.on('callback_query', async (query) => {
       return;
     }
     
-    // Показываем первую новость
     const news = allNews[0];
     const total = allNews.length;
     
@@ -1025,7 +1043,6 @@ bot.on('callback_query', async (query) => {
       );
     }
     
-    // Увеличиваем счетчик просмотров
     incrementNewsViews(news.id);
   }
   
@@ -1087,7 +1104,6 @@ bot.on('callback_query', async (query) => {
       );
     }
     
-    // Увеличиваем счетчик просмотров
     incrementNewsViews(news.id);
   }
 
@@ -1097,7 +1113,6 @@ bot.on('callback_query', async (query) => {
     const title = userStates[`${userId}_news_title`];
     const newsText = userStates[`${userId}_news_text`];
     
-    // Создаем новость без картинки
     const news = createNews(title, newsText);
     
     userStates[userId] = null;
@@ -1119,7 +1134,10 @@ bot.on('callback_query', async (query) => {
     const refCode = user.referralCode;
     const stats = getReferralStats(fromUser.id);
     
-    const link = `https://t.me/${bot.options.username}?start=${refCode}`;
+    // Получаем username бота
+    const botInfo = await bot.getMe();
+    const botUsername = botInfo.username;
+    const link = `https://t.me/${botUsername}?start=${refCode}`;
     
     let message = 
       `👥 *Реферальная система*\n\n` +
@@ -1127,12 +1145,13 @@ bot.on('callback_query', async (query) => {
       `📋 *Ваш реферальный код:*\n` +
       `\`${refCode}\`\n\n` +
       `🔗 *Ссылка для приглашения:*\n` +
-      `[Нажми чтобы скопировать](${link})\n\n` +
+      `\`${link}\`\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━\n` +
       `📊 *Приглашено друзей:* ${stats.total}\n\n` +
       `🎁 *Награда за приглашение:*\n`;
     
-    if (user.paid && user.subscriptionEnd) {
+    const hasValidSubscription = checkSubscription(fromUser.id);
+    if (hasValidSubscription) {
       message += `• +3 дня к подписке за каждого друга\n`;
     } else {
       message += `• Скидка 10% на покупку за каждого друга\n`;
@@ -1156,6 +1175,7 @@ bot.on('callback_query', async (query) => {
         reply_markup: {
           inline_keyboard: [
             [{ text: '📋 Скопировать код', callback_data: `copy_ref_${refCode}` }],
+            [{ text: '📋 Скопировать ссылку', callback_data: `copy_link_${refCode}` }],
             [{ text: '🔗 Поделиться ссылкой', callback_data: `share_ref_${refCode}` }],
             [{ text: '🏠 Главное меню', callback_data: 'main' }]
           ]
@@ -1173,10 +1193,25 @@ bot.on('callback_query', async (query) => {
     });
   }
 
+  // ── Копировать ссылку ────────────────────
+  else if (data.startsWith('copy_link_')) {
+    const refCode = data.replace('copy_link_', '');
+    const botInfo = await bot.getMe();
+    const botUsername = botInfo.username;
+    const link = `https://t.me/${botUsername}?start=${refCode}`;
+    
+    bot.answerCallbackQuery(query.id, { 
+      text: `✅ Ссылка скопирована: ${link}`, 
+      show_alert: true 
+    });
+  }
+
   // ── Поделиться ссылкой ────────────────────
   else if (data.startsWith('share_ref_')) {
     const refCode = data.replace('share_ref_', '');
-    const link = `https://t.me/${bot.options.username}?start=${refCode}`;
+    const botInfo = await bot.getMe();
+    const botUsername = botInfo.username;
+    const link = `https://t.me/${botUsername}?start=${refCode}`;
     
     bot.sendMessage(
       chatId,
