@@ -1,4 +1,4 @@
-require('dotenv').config();
+Зrequire('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const path = require('path');
@@ -170,7 +170,7 @@ function usePromocode(userId, code) {
     setUserSubscription(userId, promocode.value);
     return { 
       success: true, 
-      message: `🎉 Промокод активирован! Вы получили бесплатную подписку на ${promocode.value} дней!`,
+      message: `🎉 Промокод активирован! Вы получили подписку на ${promocode.value} дней!`,
       type: 'free',
       days: promocode.value
     };
