@@ -1715,6 +1715,115 @@ bot.on('callback_query', async (query) => {
 });
 
 // ─────────────────────────────────────────────
+//  АДМИН КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ЮЗЕРАМИ
+// ─────────────────────────────────────────────
+
+// /adduser @username дней — добавить/обновить подписку
+bot.onText(/\/adduser(?:\s+@?(\S+))(?:\s+(\d+))?/, (msg, match) => {
+  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
+
+  const username = (match[1] || '').toLowerCase().replace('@', '');
+  const days = parseInt(match[2]) || 30;
+
+  if (!username) {
+    return bot.sendMessage(msg.chat.id, '❌ Использование: /adduser @username дней\nПример: /adduser @test 30');
+  }
+
+  const db = loadDB();
+
+  // Ищем юзера по username
+  let userId = null;
+  for (const [id, data] of Object.entries(db.users)) {
+    if ((data.username || '').toLowerCase() === username) {
+      userId = id;
+      break;
+    }
+  }
+
+  // Если не нашли — создаём запись
+  if (!userId) {
+    userId = `manual_${username}`;
+    db.users[userId] = {
+      username: username,
+      firstName: username,
+      paid: false,
+      subscriptionEnd: null,
+      subscriptionDays: 0,
+      hwid: null,
+      remindersSent: [],
+      referralCode: generateReferralCode(),
+      referrals: [],
+      lastNewsId: 0
+    };
+  }
+
+  const now = new Date();
+  const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  db.users[userId].paid = true;
+  db.users[userId].subscriptionEnd = endDate.toISOString();
+  db.users[userId].subscriptionDays = days;
+  db.users[userId].remindersSent = [];
+  saveDB(db);
+
+  bot.sendMessage(
+    msg.chat.id,
+    `✅ @${username} — подписка выдана на *${days} дней*\n📅 До: ${endDate.toLocaleDateString('ru-RU')}`,
+    { parse_mode: 'Markdown' }
+  );
+});
+
+// /resethwid @username — сброс HWID
+bot.onText(/\/resethwid(?:\s+@?(\S+))?/, (msg, match) => {
+  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
+
+  const username = (match[1] || '').toLowerCase().replace('@', '');
+  if (!username) {
+    return bot.sendMessage(msg.chat.id, '❌ Использование: /resethwid @username');
+  }
+
+  const db = loadDB();
+  let userId = null;
+  for (const [id, data] of Object.entries(db.users)) {
+    if ((data.username || '').toLowerCase() === username) {
+      userId = id;
+      break;
+    }
+  }
+
+  if (!userId) {
+    return bot.sendMessage(msg.chat.id, `❌ @${username} не найден`);
+  }
+
+  db.users[userId].hwid = null;
+  saveDB(db);
+  bot.sendMessage(msg.chat.id, `✅ HWID @${username} сброшен`);
+});
+
+// /users — список всех юзеров с подписками
+bot.onText(/\/users/, (msg) => {
+  if ((msg.from.username || '') !== ADMIN_USERNAME) return;
+
+  const db = loadDB();
+  const now = new Date();
+  const lines = [];
+
+  for (const [id, data] of Object.entries(db.users)) {
+    if (!data.username) continue;
+    const active = data.paid && data.subscriptionEnd && new Date(data.subscriptionEnd) > now;
+    const status = active ? '✅' : '❌';
+    const expire = data.subscriptionEnd ? new Date(data.subscriptionEnd).toLocaleDateString('ru-RU') : 'нет';
+    const hwid = data.hwid ? 'привязан' : 'нет';
+    lines.push(`${status} @${data.username} | до ${expire} | HWID: ${hwid}`);
+  }
+
+  if (lines.length === 0) {
+    return bot.sendMessage(msg.chat.id, 'База пустая');
+  }
+
+  bot.sendMessage(msg.chat.id, lines.join('\n'), { parse_mode: 'Markdown' });
+});
+
+// ─────────────────────────────────────────────
 //  ОБРАБОТЧИК КОМАНД ДЛЯ УДАЛЕНИЯ НОВОСТЕЙ
 // ─────────────────────────────────────────────
 bot.onText(/\/delete_(\d+)/, (msg, match) => {
