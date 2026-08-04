@@ -1,4 +1,4 @@
-Зrequire('dotenv').config();
+require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const path = require('path');
@@ -291,7 +291,7 @@ bot.on('text', async (msg) => {
     }
     
     const type = userStates[userId] === 'promo_discount' ? 'discount' : 'free';
-    const typeName = type === 'discount' ? 'скидку' : 'бесплатную подписку';
+    const typeName = type === 'discount' ? 'скидку' : 'подписку';
     const code = createPromocode(type, value);
     
     userStates[userId] = null;
@@ -906,4 +906,9 @@ bot.on('callback_query', async (query) => {
 
 // ─────────────────────────────────────────────
 //  ЗАПУСК
-//
+// ─────────────────────────────────────────────
+console.log('✅ Бот запущен...');
+
+bot.on('polling_error', (err) => {
+  console.error('Polling error:', err.message);
+});
