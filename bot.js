@@ -47,7 +47,15 @@ function getUser(userId) {
       lastSpin: null,
       discountAvailable: false,
       winCount: 0,
-      totalSpins: 0
+      totalSpins: 0,
+      language: 'ru',
+      // Кастомный дизайн профиля
+      profileTheme: 'dark', // dark, light, purple, green, red, blue, gold, pink
+      profileBio: '',
+      profileAvatar: null, // file_id аватарки
+      profileBadge: null, // эмодзи бейджа
+      profileColor: '#5865F2', // цвет акцента
+      profileBackground: null // фон профиля
     };
     saveDB(db);
   }
@@ -354,7 +362,6 @@ function getTopReferrers(limit = 10) {
 // ─────────────────────────────────────────────
 //  КОЛЕСО ФОРТУНЫ
 // ─────────────────────────────────────────────
-
 function getLastSpinTime(userId) {
   const db = loadDB();
   const user = db.users[userId];
@@ -579,7 +586,6 @@ const catalog = [
       '💎 Качество: Premium\n' +
       '🔄 Обновления: включены\n' +
       '⚡ Поставка: после подтверждения оплаты\n' +
-      '💰 Цена: 100 ⭐️ Telegram Stars\n' +
       '━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '📝 Нажми *Buy* чтобы приобрести.',
   },
@@ -617,6 +623,53 @@ function adminKeyboard() {
 }
 
 // ─────────────────────────────────────────────
+//  ДИЗАЙН КЛАВИАТУРЫ
+// ─────────────────────────────────────────────
+function getProfileDesignKeyboard(userId) {
+  return {
+    inline_keyboard: [
+      [{ text: '🎨 Сменить тему', callback_data: 'design_theme' }],
+      [{ text: '✏️ Изменить подпись', callback_data: 'design_bio' }],
+      [{ text: '🖼️ Сменить аватарку', callback_data: 'design_avatar' }],
+      [{ text: '🎖️ Выбрать бейдж', callback_data: 'design_badge' }],
+      [{ text: '⬅️ Назад в профиль', callback_data: 'profile' }],
+    ],
+  };
+}
+
+function getThemeKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: '🌙 Темная', callback_data: 'theme_dark' }],
+      [{ text: '☀️ Светлая', callback_data: 'theme_light' }],
+      [{ text: '💜 Фиолетовая', callback_data: 'theme_purple' }],
+      [{ text: '💚 Зеленая', callback_data: 'theme_green' }],
+      [{ text: '❤️ Красная', callback_data: 'theme_red' }],
+      [{ text: '💙 Синяя', callback_data: 'theme_blue' }],
+      [{ text: '💛 Золотая', callback_data: 'theme_gold' }],
+      [{ text: '🩷 Розовая', callback_data: 'theme_pink' }],
+      [{ text: '⬅️ Назад', callback_data: 'design_menu' }],
+    ],
+  };
+}
+
+function getBadgeKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: '👑 Король', callback_data: 'badge_king' }],
+      [{ text: '⭐️ Звезда', callback_data: 'badge_star' }],
+      [{ text: '🔥 Огонь', callback_data: 'badge_fire' }],
+      [{ text: '💎 Бриллиант', callback_data: 'badge_diamond' }],
+      [{ text: '🚀 Ракета', callback_data: 'badge_rocket' }],
+      [{ text: '🎯 Цель', callback_data: 'badge_target' }],
+      [{ text: '🏆 Трофей', callback_data: 'badge_trophy' }],
+      [{ text: '🔮 Магия', callback_data: 'badge_magic' }],
+      [{ text: '⬅️ Назад', callback_data: 'design_menu' }],
+    ],
+  };
+}
+
+// ─────────────────────────────────────────────
 //  ОБРАБОТЧИКИ СООБЩЕНИЙ
 // ─────────────────────────────────────────────
 
@@ -637,6 +690,9 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
   if (!db.users[userId].lastSpin) db.users[userId].lastSpin = null;
   if (!db.users[userId].totalSpins) db.users[userId].totalSpins = 0;
   if (!db.users[userId].winCount) db.users[userId].winCount = 0;
+  if (!db.users[userId].profileTheme) db.users[userId].profileTheme = 'dark';
+  if (!db.users[userId].profileBio) db.users[userId].profileBio = '';
+  if (!db.users[userId].profileBadge) db.users[userId].profileBadge = '⭐️';
   saveDB(db);
 
   if (refCode && !db.users[userId].referredBy) {
@@ -661,6 +717,22 @@ bot.onText(/\/start(?: (.+))?/, (msg, match) => {
 bot.on('text', async (msg) => {
   const userId = msg.from.id;
   const text = msg.text;
+  
+  // Изменение подписи
+  if (userStates[userId] === 'design_bio') {
+    const db = loadDB();
+    const user = getUser(userId);
+    user.profileBio = text;
+    saveDB(db);
+    userStates[userId] = null;
+    
+    bot.sendMessage(
+      msg.chat.id,
+      `✅ *Подпись обновлена!*\n\n📝 Новая подпись:\n"${text}"`,
+      { parse_mode: 'Markdown', reply_markup: getProfileDesignKeyboard(userId) }
+    );
+    return;
+  }
   
   if (userStates[userId] === 'waiting_referral_code') {
     const result = processReferral(userId, text.toUpperCase());
@@ -712,9 +784,26 @@ bot.on('text', async (msg) => {
   }
 });
 
-// Прием фото
+// Прием фото для аватарки
 bot.on('photo', async (msg) => {
   const userId = msg.from.id;
+  
+  // Установка аватарки
+  if (userStates[userId] === 'design_avatar') {
+    const photoFileId = msg.photo[msg.photo.length - 1].file_id;
+    const db = loadDB();
+    const user = getUser(userId);
+    user.profileAvatar = photoFileId;
+    saveDB(db);
+    userStates[userId] = null;
+    
+    bot.sendMessage(
+      msg.chat.id,
+      `✅ *Аватарка обновлена!*\n\n🖼️ Теперь у тебя новая аватарка!`,
+      { parse_mode: 'Markdown', reply_markup: getProfileDesignKeyboard(userId) }
+    );
+    return;
+  }
 
   if (userStates[userId] !== 'waiting_payment_proof') return;
 
@@ -796,6 +885,7 @@ bot.on('callback_query', async (query) => {
   const data = query.data;
   const fromUser = query.from;
   const isAdmin = (fromUser.username || '') === ADMIN_USERNAME;
+  const userId = fromUser.id;
 
   bot.answerCallbackQuery(query.id);
 
@@ -833,11 +923,7 @@ bot.on('callback_query', async (query) => {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ 
-            text: '⭐️ Купить за Stars', 
-            url: 'https://t.me/BotFather?start=stars' 
-          }],
-          [{ text: '💰 Купить за USD', callback_data: `buy_${item.id}` }],
+          [{ text: '✅ Buy', callback_data: `buy_${item.id}` }],
           [{ text: '⬅️ Назад', callback_data: 'catalog' }],
           [{ text: '🏠 Главное меню', callback_data: 'main' }],
         ],
@@ -847,8 +933,8 @@ bot.on('callback_query', async (query) => {
 
   // ── Buy ───────────────────────────────────
   else if (data.startsWith('buy_')) {
-    const order = getOrder(fromUser.id);
-    const hasValidSubscription = checkSubscription(fromUser.id);
+    const order = getOrder(userId);
+    const hasValidSubscription = checkSubscription(userId);
 
     if (hasValidSubscription) {
       bot.editMessageText(
@@ -876,10 +962,10 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    userStates[fromUser.id] = 'waiting_payment_proof';
+    userStates[userId] = 'waiting_payment_proof';
 
     bot.editMessageText(
-      '💰 *Оплата USD*\n\n' +
+      '💳 *Оплата*\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━\n' +
         '1️⃣ Напишите менеджеру для уточнения цены:\n' +
         '👤 @hardwareexploit\n\n' +
@@ -902,8 +988,8 @@ bot.on('callback_query', async (query) => {
 
   // ── Подать заявку ─────────────────────────
   else if (data === 'submit_order') {
-    const order = getOrder(fromUser.id);
-    const hasValidSubscription = checkSubscription(fromUser.id);
+    const order = getOrder(userId);
+    const hasValidSubscription = checkSubscription(userId);
 
     if (hasValidSubscription) {
       bot.editMessageText(
@@ -931,7 +1017,7 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    userStates[fromUser.id] = 'waiting_payment_proof';
+    userStates[userId] = 'waiting_payment_proof';
 
     bot.editMessageText(
       '📩 *Подача заявки*\n\n' +
@@ -957,8 +1043,6 @@ bot.on('callback_query', async (query) => {
 
   // ── Колесо фортуны ────────────────────────
   else if (data === 'spin_wheel') {
-    const userId = fromUser.id;
-    
     if (!canSpin(userId)) {
       const timeLeft = getTimeUntilNextSpin(userId);
       if (timeLeft) {
@@ -987,17 +1071,11 @@ bot.on('callback_query', async (query) => {
     
     const result = spinWheel(userId);
     
-    let finalMessage = `${result.emoji} *РЕЗУЛЬТАТ!*\n\n${result.message}\n\n`;
-    
     const user = getUser(userId);
-    finalMessage += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    finalMessage += `📊 *Статистика*\n`;
-    finalMessage += `🎡 Всего кручений: *${user.totalSpins || 0}*\n`;
-    finalMessage += `🏆 Побед: *${user.winCount || 0}*\n`;
+    let finalMessage = `${result.emoji} *РЕЗУЛЬТАТ!*\n\n${result.message}\n\n━━━━━━━━━━━━━━━━━━━━━\n📊 *Статистика*\n🎡 Всего кручений: *${user.totalSpins || 0}*\n🏆 Побед: *${user.winCount || 0}*`;
     
     if (result.discount) {
-      finalMessage += `\n💳 Скидка *${result.discount}%* сохранена!\n`;
-      finalMessage += `Используй её при следующей покупке!`;
+      finalMessage += `\n\n💳 Скидка *${result.discount}%* сохранена!\nИспользуй её при следующей покупке!`;
     }
     
     const keyboard = [
@@ -1025,9 +1103,9 @@ bot.on('callback_query', async (query) => {
 
   // ── Реферальная система ────────────────────
   else if (data === 'referral') {
-    const user = getUser(fromUser.id);
+    const user = getUser(userId);
     const refCode = user.referralCode;
-    const stats = getReferralStats(fromUser.id);
+    const stats = getReferralStats(userId);
     
     const botInfo = await bot.getMe();
     const botUsername = botInfo.username;
@@ -1044,7 +1122,7 @@ bot.on('callback_query', async (query) => {
       `📊 *Приглашено друзей:* ${stats.total}\n\n` +
       `🎁 *Награда за приглашение:*\n`;
     
-    const hasValidSubscription = checkSubscription(fromUser.id);
+    const hasValidSubscription = checkSubscription(userId);
     if (hasValidSubscription) {
       message += `• +3 дня к подписке за каждого друга\n`;
     } else {
@@ -1119,7 +1197,7 @@ bot.on('callback_query', async (query) => {
 
   // ── Промокод ──────────────────────────────
   else if (data === 'promocode') {
-    userStates[fromUser.id] = 'waiting_promocode';
+    userStates[userId] = 'waiting_promocode';
     
     bot.editMessageText(
       '🎫 *Введите промокод*\n\nОтправьте код текстом в этот чат.',
@@ -1138,7 +1216,7 @@ bot.on('callback_query', async (query) => {
 
   // ── Отмена ────────────────────────────────
   else if (data === 'cancel_payment') {
-    userStates[fromUser.id] = null;
+    userStates[userId] = null;
     bot.editMessageText(
       '❌ Отменено.',
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: mainMenuKeyboard() }
@@ -1147,14 +1225,14 @@ bot.on('callback_query', async (query) => {
 
   // ── Профиль ───────────────────────────────
   else if (data === 'profile') {
-    const user = getUser(fromUser.id);
+    const user = getUser(userId);
     const uname = fromUser.username ? `@${fromUser.username}` : 'не указан';
     const fullName = [fromUser.first_name, fromUser.last_name].filter(Boolean).join(' ');
-    const order = getOrder(fromUser.id);
-    const stats = getReferralStats(fromUser.id);
+    const order = getOrder(userId);
+    const stats = getReferralStats(userId);
     
-    const hasValidSubscription = checkSubscription(fromUser.id);
-    const subInfo = getSubscriptionInfo(fromUser.id);
+    const hasValidSubscription = checkSubscription(userId);
+    const subInfo = getSubscriptionInfo(userId);
 
     let statusText = '❌ Нет активной подписки';
     let subscriptionInfo = '';
@@ -1168,12 +1246,30 @@ bot.on('callback_query', async (query) => {
       statusText = '❌ Оплата отклонена';
     }
 
+    // Формируем профиль с дизайном
+    let profileText = `👤 *Профиль*\n\n━━━━━━━━━━━━━━━━━━━━━\n`;
+    profileText += `${user.profileBadge || '⭐️'} *${fullName}*\n`;
+    profileText += `📛 Username: ${uname}\n`;
+    profileText += `🆔 ID: \`${fromUser.id}\`\n`;
+    profileText += `💳 Статус: ${statusText}${subscriptionInfo}\n`;
+    profileText += `👥 Рефералов: *${stats.total}*\n`;
+    profileText += `🎡 Кручений колеса: *${user.totalSpins || 0}*\n`;
+    profileText += `🏆 Побед: *${user.winCount || 0}*\n`;
+    
+    if (user.profileBio) {
+      profileText += `\n📝 *Подпись:*\n"${user.profileBio}"\n`;
+    }
+    
+    profileText += `━━━━━━━━━━━━━━━━━━━━━`;
+    profileText += `\n🎨 Тема: ${getThemeName(user.profileTheme)}`;
+
     const keyboard = [];
 
     if (hasValidSubscription) {
       keyboard.push([{ text: '⬇️ Скачать лоадер', callback_data: 'download_loader' }]);
     }
 
+    keyboard.push([{ text: '🎨 Оформить профиль', callback_data: 'design_menu' }]);
     keyboard.push([{ text: '🎰 Колесо фортуны', callback_data: 'spin_wheel' }]);
     keyboard.push([{ text: '👥 Пригласить друга', callback_data: 'referral' }]);
     keyboard.push([{ text: '🏠 Главное меню', callback_data: 'main' }]);
@@ -1182,24 +1278,21 @@ bot.on('callback_query', async (query) => {
       keyboard.push([{ text: '🔧 Админ панель', callback_data: 'admin_panel' }]);
     }
 
+    // Отправляем с учетом темы
+    const themeEmojis = {
+      dark: '🌙', light: '☀️', purple: '💜', green: '💚', 
+      red: '❤️', blue: '💙', gold: '💛', pink: '🩷'
+    };
+    
     bot.editMessageText(
-      `👤 *Профиль*\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━━\n` +
-        `🔖 Имя: *${fullName}*\n` +
-        `📛 Username: ${uname}\n` +
-        `🆔 ID: \`${fromUser.id}\`\n` +
-        `💳 Статус: ${statusText}${subscriptionInfo}\n` +
-        `👥 Рефералов: *${stats.total}*\n` +
-        `🎡 Кручений колеса: *${user.totalSpins || 0}*\n` +
-        `🏆 Побед: *${user.winCount || 0}*\n` +
-        `━━━━━━━━━━━━━━━━━━━━━`,
+      `${themeEmojis[user.profileTheme] || '🌙'} ` + profileText,
       { chat_id: chatId, message_id: msgId, parse_mode: 'Markdown', reply_markup: { inline_keyboard: keyboard } }
     );
   }
 
   // ── Скачать лоадер ────────────────────────
   else if (data === 'download_loader') {
-    const hasValidSubscription = checkSubscription(fromUser.id);
+    const hasValidSubscription = checkSubscription(userId);
     
     if (!hasValidSubscription) {
       bot.answerCallbackQuery(query.id, { text: '❌ Нет активной подписки!', show_alert: true });
@@ -1235,6 +1328,147 @@ bot.on('callback_query', async (query) => {
             [{ text: '🏠 Главное меню', callback_data: 'main' }],
           ],
         },
+      }
+    );
+  }
+
+  // ══════════════════════════════════════════
+  //  ДИЗАЙН ПРОФИЛЯ
+  // ══════════════════════════════════════════
+
+  // ── Меню дизайна ──────────────────────────
+  else if (data === 'design_menu') {
+    bot.editMessageText(
+      `🎨 *Оформление профиля*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Выбери что хочешь изменить:\n` +
+        `━━━━━━━━━━━━━━━━━━━━━`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: getProfileDesignKeyboard(userId)
+      }
+    );
+  }
+
+  // ── Сменить тему ──────────────────────────
+  else if (data === 'design_theme') {
+    bot.editMessageText(
+      `🎨 *Выбери тему профиля*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Выбери цветовую тему для своего профиля:\n` +
+        `━━━━━━━━━━━━━━━━━━━━━`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: getThemeKeyboard()
+      }
+    );
+  }
+
+  // ── Изменить подпись ──────────────────────
+  else if (data === 'design_bio') {
+    userStates[userId] = 'design_bio';
+    
+    bot.editMessageText(
+      `✏️ *Изменить подпись*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Отправь новую подпись для своего профиля.\n\n` +
+        `Например:\n"🔥 Лучший покупатель!"\n"💎 VIP клиент"\n\n` +
+        `Просто напиши текст ниже 👇`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Отмена', callback_data: 'design_menu' }]
+          ]
+        }
+      }
+    );
+  }
+
+  // ── Сменить аватарку ──────────────────────
+  else if (data === 'design_avatar') {
+    userStates[userId] = 'design_avatar';
+    
+    bot.editMessageText(
+      `🖼️ *Сменить аватарку*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Отправь новую аватарку для профиля.\n\n` +
+        `Просто отправь фото в этот чат 👇`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ Отмена', callback_data: 'design_menu' }]
+          ]
+        }
+      }
+    );
+  }
+
+  // ── Выбрать бейдж ─────────────────────────
+  else if (data === 'design_badge') {
+    bot.editMessageText(
+      `🎖️ *Выбери бейдж*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `Выбери крутой бейдж для своего профиля:\n` +
+        `━━━━━━━━━━━━━━━━━━━━━`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: getBadgeKeyboard()
+      }
+    );
+  }
+
+  // ── Выбор темы ────────────────────────────
+  else if (data.startsWith('theme_')) {
+    const theme = data.replace('theme_', '');
+    const db = loadDB();
+    const user = getUser(userId);
+    user.profileTheme = theme;
+    saveDB(db);
+    
+    bot.editMessageText(
+      `✅ *Тема изменена!*\n\n🎨 Теперь у тебя тема: ${getThemeName(theme)}`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: getProfileDesignKeyboard(userId)
+      }
+    );
+  }
+
+  // ── Выбор бейджа ──────────────────────────
+  else if (data.startsWith('badge_')) {
+    const badgeMap = {
+      king: '👑', star: '⭐️', fire: '🔥', diamond: '💎',
+      rocket: '🚀', target: '🎯', trophy: '🏆', magic: '🔮'
+    };
+    const badgeKey = data.replace('badge_', '');
+    const badge = badgeMap[badgeKey] || '⭐️';
+    
+    const db = loadDB();
+    const user = getUser(userId);
+    user.profileBadge = badge;
+    saveDB(db);
+    
+    bot.editMessageText(
+      `✅ *Бейдж изменен!*\n\n🎖️ Теперь у тебя бейдж: ${badge}`,
+      {
+        chat_id: chatId,
+        message_id: msgId,
+        parse_mode: 'Markdown',
+        reply_markup: getProfileDesignKeyboard(userId)
       }
     );
   }
@@ -1383,7 +1617,7 @@ bot.on('callback_query', async (query) => {
   else if (data === 'admin_upload_loader') {
     if (!isAdmin) return;
 
-    userStates[fromUser.id] = 'waiting_loader_file';
+    userStates[userId] = 'waiting_loader_file';
 
     bot.editMessageText(
       '📤 *Загрузка лоадера*\n\nОтправь файл лоадера в этот чат.',
@@ -1421,7 +1655,7 @@ bot.on('callback_query', async (query) => {
   else if (data === 'promo_type_discount' || data === 'promo_type_free') {
     if (!isAdmin) return;
     
-    userStates[fromUser.id] = data === 'promo_type_discount' ? 'promo_discount' : 'promo_free';
+    userStates[userId] = data === 'promo_type_discount' ? 'promo_discount' : 'promo_free';
     
     const typeName = data === 'promo_type_discount' ? 'скидку (%)' : 'количество дней';
     
@@ -1546,6 +1780,23 @@ bot.on('callback_query', async (query) => {
     );
   }
 });
+
+// ─────────────────────────────────────────────
+//  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ─────────────────────────────────────────────
+function getThemeName(theme) {
+  const themes = {
+    dark: '🌙 Темная',
+    light: '☀️ Светлая',
+    purple: '💜 Фиолетовая',
+    green: '💚 Зеленая',
+    red: '❤️ Красная',
+    blue: '💙 Синяя',
+    gold: '💛 Золотая',
+    pink: '🩷 Розовая'
+  };
+  return themes[theme] || '🌙 Темная';
+}
 
 // ─────────────────────────────────────────────
 //  ЗАПУСК НАПОМИНАНИЙ
